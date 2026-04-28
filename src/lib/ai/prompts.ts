@@ -66,11 +66,47 @@ export function buildWritingSkillBlock(input: WritingAssistInput) {
   ];
 }
 
+export function buildChapterMemoryBlock(input: WritingAssistInput) {
+  if (!input.memory) {
+    return [];
+  }
+
+  return [
+    "章节记忆：",
+    input.memory.currentFocus ? `本章目标：${input.memory.currentFocus}` : null,
+    "前情简述：",
+    ...(input.memory.storySoFar.length > 0 ? input.memory.storySoFar.map((item) => `- ${item}`) : ["- 暂无"]),
+    "故事线：",
+    ...(input.memory.activeStoryLines.length > 0 ? input.memory.activeStoryLines.map((item) => `- ${item}`) : ["- 暂无"]),
+    "还没回收的线索：",
+    ...(input.memory.openThreads.length > 0 ? input.memory.openThreads.map((item) => `- ${item}`) : ["- 暂无"])
+  ].filter((item): item is string => Boolean(item));
+}
+
+export function buildSetupParsingPrompt(sourceText: string) {
+  return [
+    "You are an assistant that must parse novel setup/spec text into a structured creation draft.",
+    "Output must be JSON only.",
+    'Return exactly one top-level JSON object with this shape: {"title": string, "category": string, "subGenre": string, "targetAudience": string, "premise": string, "narrativeView": string, "storyStructure": string, "lengthCategory": "SHORT" | "MEDIUM" | "LONG", "plannedChapterCount"?: positive integer, "targetWordsPerChapter"?: positive integer, "worldSeed": string, "styleGoal": string, "styleSamples": StyleSample[], "characterSeeds": CharacterSeed[], "guessedFields": string[], "missingFields": string[], "confidenceNotes": string[]}.',
+    'Use empty strings or empty arrays when a field is not provided. Do not wrap the object in markdown, prose, or code fences.',
+    "If you infer or guess any field, list that field name in guessedFields.",
+    "If information is missing from the source, list that field name in missingFields.",
+    "Return at most 3 valid character seeds and at most 3 valid style samples.",
+    'StyleSample = {"title"?: string, "content": string, "note"?: string}.',
+    'CharacterSeed = {"name": string, "role"?: string, "summary"?: string, "factionName"?: string, "locationName"?: string}.',
+    "lengthCategory must be one of SHORT, MEDIUM, LONG.",
+    "",
+    "Source text:",
+    sourceText
+  ].join("\n");
+}
+
 export function buildUserPrompt(input: WritingAssistInput) {
   const entityLines = input.entities.map((entity) => `- ${entity.name}（${entity.type}）：${entity.summary ?? "暂无摘要"}`);
   const foreshadowLines = input.foreshadows.map((item) => `- ${item.hook}（${item.status}）`);
   const styleProfileBlock = buildStyleProfileBlock(input);
   const writingSkillBlock = buildWritingSkillBlock(input);
+  const chapterMemoryBlock = buildChapterMemoryBlock(input);
 
   return [
     `任务模式：${input.mode}`,
@@ -82,6 +118,8 @@ export function buildUserPrompt(input: WritingAssistInput) {
     `章节：${input.chapter.title}`,
     input.chapter.sceneGoal ? `场景目标：${input.chapter.sceneGoal}` : null,
     `用户指令：${input.instruction}`,
+    chapterMemoryBlock.length > 0 ? "" : null,
+    ...chapterMemoryBlock,
     "",
     "文风规则：",
     ...input.novel.voiceRules.map((rule) => `- ${rule}`),

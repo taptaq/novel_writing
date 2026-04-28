@@ -61,6 +61,12 @@ export interface WritingAssistInput {
     title: string;
     sceneGoal?: string;
   };
+  memory?: {
+    storySoFar: string[];
+    activeStoryLines: string[];
+    openThreads: string[];
+    currentFocus?: string;
+  };
   entities: Array<{
     name: string;
     type: string;

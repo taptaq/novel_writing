@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildStyleProfileBlock, buildWritingSkillBlock } from "@/lib/ai/prompts";
+import {
+  buildSetupParsingPrompt,
+  buildChapterMemoryBlock,
+  buildStyleProfileBlock,
+  buildWritingSkillBlock
+} from "@/lib/ai/prompts";
 import type { WritingAssistInput } from "@/lib/ai/types";
 
 function buildInput(overrides: Partial<WritingAssistInput> = {}): WritingAssistInput {
@@ -54,15 +59,15 @@ describe("buildWritingSkillBlock", () => {
     const block = buildWritingSkillBlock(buildInput({ skillPresetId: "voice-keeper" }));
 
     expect(block).toContain("写作技能预设：");
-    expect(block).toContain("名称：文风守门");
-    expect(block.join("\n")).toContain("去 AI 味");
+    expect(block).toContain("名称：去掉 AI 味");
+    expect(block.join("\n")).toContain("AI 味");
   });
 
   it("injects Crucible writing constraints for scene drafting", () => {
     const block = buildWritingSkillBlock(buildInput({ skillPresetId: "crucible-writer" }));
     const text = block.join("\n");
 
-    expect(block).toContain("名称：Crucible 写作");
+    expect(block).toContain("名称：继续写一小段");
     expect(text).toContain("场景目标");
     expect(text).toContain("冲突");
     expect(text).toContain("不要解释大纲");
@@ -70,5 +75,54 @@ describe("buildWritingSkillBlock", () => {
 
   it("skips writing skill instructions when no preset is selected", () => {
     expect(buildWritingSkillBlock(buildInput())).toEqual([]);
+  });
+});
+
+describe("buildChapterMemoryBlock", () => {
+  it("injects compact previous-story memory", () => {
+    const block = buildChapterMemoryBlock(
+      buildInput({
+        memory: {
+          storySoFar: ["第1章《潮湿来信》：沈砚收到匿名来信。"],
+          activeStoryLines: ["主线：潮汐钟失准。"],
+          openThreads: ["匿名来信 -> 真正收件人未揭开。"],
+          currentFocus: "让主角意识到危险"
+        }
+      })
+    );
+    const text = block.join("\n");
+
+    expect(block).toContain("章节记忆：");
+    expect(text).toContain("前情简述");
+    expect(text).toContain("沈砚收到匿名来信");
+    expect(text).toContain("真正收件人未揭开");
+  });
+});
+
+describe("buildSetupParsingPrompt", () => {
+  it("describes a single top-level JSON object with concrete field types", () => {
+    const prompt = buildSetupParsingPrompt("主角是钟楼修理匠，故事偏中篇悬疑。");
+
+    expect(prompt).toContain("parse novel setup/spec text into a structured creation draft");
+    expect(prompt).toContain("JSON only");
+    expect(prompt).toContain("Return exactly one top-level JSON object with this shape");
+    expect(prompt).toContain("\"title\": string");
+    expect(prompt).toContain("\"lengthCategory\": \"SHORT\" | \"MEDIUM\" | \"LONG\"");
+    expect(prompt).toContain("\"plannedChapterCount\"?: positive integer");
+    expect(prompt).toContain("\"targetWordsPerChapter\"?: positive integer");
+    expect(prompt).toContain("\"styleSamples\": StyleSample[]");
+    expect(prompt).toContain("\"characterSeeds\": CharacterSeed[]");
+    expect(prompt).toContain("Use empty strings or empty arrays when a field is not provided");
+    expect(prompt).toContain("Do not wrap the object in markdown, prose, or code fences");
+    expect(prompt).toContain("StyleSample = {\"title\"?: string, \"content\": string, \"note\"?: string}");
+    expect(prompt).toContain("CharacterSeed = {\"name\": string, \"role\"?: string, \"summary\"?: string, \"factionName\"?: string, \"locationName\"?: string}");
+    expect(prompt).toContain("guessedFields");
+    expect(prompt).toContain("missingFields");
+    expect(prompt).toContain("at most 3 valid character seeds");
+    expect(prompt).toContain("at most 3 valid style samples");
+    expect(prompt).toContain("SHORT");
+    expect(prompt).toContain("MEDIUM");
+    expect(prompt).toContain("LONG");
+    expect(prompt).toContain("主角是钟楼修理匠，故事偏中篇悬疑。");
   });
 });

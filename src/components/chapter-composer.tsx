@@ -204,7 +204,60 @@ export function ChapterComposer({ novelSlug, chapterSlug, data }: ChapterCompose
       </section>
 
       <aside className="stack-column">
-        <section className="panel">
+        {data.memory ? (
+          <section className="panel memory-panel">
+            <div className="panel-header">
+              <div>
+                <p className="panel-eyebrow">前文记忆</p>
+                <h2>已写 {data.memory.previousChapterCount} 章</h2>
+              </div>
+            </div>
+
+            {data.memory.currentFocus ? (
+              <div className="note-box memory-focus">
+                <p className="field-label">本章目标</p>
+                <p>{data.memory.currentFocus}</p>
+              </div>
+            ) : null}
+
+            {data.memory.storySoFar.length > 0 ? (
+              <div className="memory-block">
+                <p className="field-label">前情简述</p>
+                <ul className="plain-list compact-list">
+                  {data.memory.storySoFar.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="empty-state">这是前几章的位置。等你写出更多章节后，这里会自动整理简要回顾。</p>
+            )}
+
+            {data.memory.activeStoryLines.length > 0 ? (
+              <div className="memory-block">
+                <p className="field-label">故事线</p>
+                <ul className="plain-list compact-list">
+                  {data.memory.activeStoryLines.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {data.memory.openThreads.length > 0 ? (
+              <div className="memory-block">
+                <p className="field-label">还没回收的线索</p>
+                <ul className="plain-list compact-list">
+                  {data.memory.openThreads.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className="panel writing-assist-panel">
           <div className="panel-header">
             <div>
               <p className="panel-eyebrow">AI 写作面板</p>
@@ -242,22 +295,30 @@ export function ChapterComposer({ novelSlug, chapterSlug, data }: ChapterCompose
             </select>
           </label>
 
-          <label className="field">
+          <div className="field" role="group" aria-label="写作技能">
             <span className="field-label">写作技能</span>
-            <select
-              className="text-input"
-              name="skillPresetId"
-              value={skillPresetId}
-              onChange={(event) => applySkillPreset(event.target.value as WritingSkillPresetId | "none")}
-            >
-              <option value="none">不使用预设</option>
+            <div className="skill-choice-grid">
+              <button
+                type="button"
+                className={skillPresetId === "none" ? "skill-choice skill-choice-active" : "skill-choice"}
+                onClick={() => applySkillPreset("none")}
+                aria-pressed={skillPresetId === "none"}
+              >
+                不使用
+              </button>
               {writingSkillPresets.map((item) => (
-                <option key={item.id} value={item.id}>
+                <button
+                  key={item.id}
+                  type="button"
+                  className={skillPresetId === item.id ? "skill-choice skill-choice-active" : "skill-choice"}
+                  onClick={() => applySkillPreset(item.id)}
+                  aria-pressed={skillPresetId === item.id}
+                >
                   {item.name}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
 
           {selectedSkillPreset ? (
             <div className="skill-preset-card">

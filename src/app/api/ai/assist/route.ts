@@ -44,6 +44,14 @@ export async function POST(request: Request) {
         title: chapterData.chapter.title,
         sceneGoal: chapterData.chapter.sceneGoal
       },
+      memory: chapterData.memory
+        ? {
+            storySoFar: chapterData.memory.storySoFar,
+            activeStoryLines: chapterData.memory.activeStoryLines,
+            openThreads: chapterData.memory.openThreads,
+            currentFocus: chapterData.memory.currentFocus
+          }
+        : undefined,
       entities: chapterData.entities.map((entity) => ({
         name: entity.name,
         type: entity.type,

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getNovelWorkspace } from "@/lib/repositories/novels";
 import { WorkspaceNav } from "@/components/workspace-nav";
+import { getNovelLengthProfile } from "@/lib/novel-length";
 
 export default async function NovelWorkspaceLayout({
   children,
@@ -18,6 +19,7 @@ export default async function NovelWorkspaceLayout({
   }
 
   const firstChapter = workspace.chapters[0];
+  const lengthProfile = getNovelLengthProfile(workspace.novel.lengthCategory);
 
   return (
     <div className="page-stack">
@@ -32,6 +34,7 @@ export default async function NovelWorkspaceLayout({
           <div className="stats-inline">
             <span className="stat-pill">{workspace.novel.chapterCount} 章</span>
             <span className="stat-pill">{workspace.novel.wordCount} 字</span>
+            <span className="stat-pill">{lengthProfile.label}</span>
             <span className="stat-pill">{workspace.novel.tone ?? "未定义语气"}</span>
           </div>
           {firstChapter ? (

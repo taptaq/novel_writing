@@ -5,26 +5,22 @@ import NewNovelPage from "@/app/novels/new/page";
 
 globalThis.React = React;
 
-vi.mock("@/components/novel-creation-form", () => ({
-  NovelCreationForm: () => (
-    <form>
-      <section>基础信息</section>
-      <section>扩展策划</section>
-      <section>人物种子</section>
-      <button type="submit">创建作品</button>
-    </form>
-  )
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn()
+  })
 }));
 
 describe("NewNovelPage", () => {
-  it("renders the three-section creation page shell", async () => {
+  it("renders the creation page shell around the real creation form", async () => {
     const markup = renderToStaticMarkup(await NewNovelPage());
 
     expect(markup).toContain("新建书籍");
     expect(markup).toContain("先把项目建起来");
-    expect(markup).toContain("基础信息");
-    expect(markup).toContain("扩展策划");
-    expect(markup).toContain("人物种子");
+    expect(markup).toContain("填完核心信息，再补几个人物种子，就能直接进入工作区。");
     expect(markup).toContain("创建作品");
+    expect(markup).toContain("开始解析");
+    expect(markup).toContain("应用全部到表单");
+    expect(markup).toContain("只填空白项");
   });
 });

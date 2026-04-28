@@ -14,6 +14,7 @@ const payload = {
   premise: "一位档案修复师在倒塌前的玻璃城里寻找失踪姐姐留下的第二份遗嘱。",
   narrativeView: "第三人称有限视角",
   storyStructure: "三幕结构",
+  lengthCategory: "LONG",
   plannedChapterCount: 24,
   targetWordsPerChapter: 3200,
   worldSeed: "玻璃城的记忆会在夜间折射成第二现实。",
@@ -66,6 +67,7 @@ describe("novelCreationSchema", () => {
     const parsed = novelCreationSchema.parse(payload);
 
     expect(parsed.title).toBe("玻璃城遗闻");
+    expect(parsed.lengthCategory).toBe("LONG");
     expect(parsed.relationSeeds[0].remark).toBe("主线绑定");
     expect(parsed.relationSeeds[0].note).toBe("第一阶段图谱备注");
   });

@@ -14,6 +14,7 @@ import {
   novelStyleProfileSchema,
   novelStyleSampleSchema
 } from "@/lib/novel-style";
+import { buildChapterMemory } from "@/lib/chapter-memory";
 import { prisma } from "@/lib/prisma";
 import { estimateWordCount, excerpt } from "@/lib/text/word-count";
 import type {
@@ -86,6 +87,7 @@ function toNovelSummaryRecord(novel: {
   summary: string | null;
   genre: string | null;
   tone: string | null;
+  lengthCategory: NovelSummary["lengthCategory"] | null;
   status: NovelSummary["status"];
   updatedAt: Date;
 }) {
@@ -97,6 +99,7 @@ function toNovelSummaryRecord(novel: {
     summary: novel.summary ?? undefined,
     genre: novel.genre ?? undefined,
     tone: novel.tone ?? undefined,
+    lengthCategory: novel.lengthCategory ?? "MEDIUM",
     status: novel.status,
     updatedAt: novel.updatedAt.toISOString(),
     chapterCount: 0,
@@ -195,6 +198,7 @@ export async function getNovelSummaries(): Promise<NovelSummary[]> {
       summary: novel.summary ?? undefined,
       genre: novel.genre ?? undefined,
       tone: novel.tone ?? undefined,
+      lengthCategory: novel.lengthCategory ?? "MEDIUM",
       status: novel.status,
       updatedAt: novel.updatedAt.toISOString(),
       chapterCount: novel.chapters.length,
@@ -234,6 +238,7 @@ export async function createNovelWithSeedData(raw: unknown): Promise<NovelSummar
             genre,
             tone: input.novel.styleGoal,
             category: input.novel.category,
+            lengthCategory: input.novel.lengthCategory,
             subGenre: input.novel.subGenre,
             targetAudience: input.novel.targetAudience,
             narrativeView: input.novel.narrativeView,
@@ -389,6 +394,7 @@ export async function getNovelWorkspace(novelSlug: string): Promise<NovelWorkspa
         summary: novel.summary ?? undefined,
         genre: novel.genre ?? undefined,
         tone: novel.tone ?? undefined,
+        lengthCategory: novel.lengthCategory ?? "MEDIUM",
         status: novel.status,
         updatedAt: novel.updatedAt.toISOString(),
         chapterCount: novel.chapters.length,
@@ -501,6 +507,7 @@ export async function getNovelGraphData(novelSlug: string): Promise<NovelGraphDa
         summary: novel.summary ?? undefined,
         genre: novel.genre ?? undefined,
         tone: novel.tone ?? undefined,
+        lengthCategory: novel.lengthCategory ?? "MEDIUM",
         status: novel.status,
         updatedAt: novel.updatedAt.toISOString(),
         chapterCount: novel.chapters.length,
@@ -556,6 +563,7 @@ export async function getNovelStyleWorkspace(
       summary: novel.summary ?? undefined,
       genre: novel.genre ?? undefined,
       tone: novel.tone ?? undefined,
+      lengthCategory: novel.lengthCategory ?? "MEDIUM",
       status: novel.status,
       updatedAt: novel.updatedAt.toISOString(),
       chapterCount: novel.chapters.length,
@@ -761,6 +769,7 @@ export async function getChapterEditorData(
         summary: novel.summary ?? undefined,
         genre: novel.genre ?? undefined,
         tone: novel.tone ?? undefined,
+        lengthCategory: novel.lengthCategory ?? "MEDIUM",
         status: novel.status,
         updatedAt: novel.updatedAt.toISOString(),
         chapterCount: novel.chapters.length,
@@ -800,6 +809,45 @@ export async function getChapterEditorData(
           status: item.status,
           chapterSlug: item.chapter?.slug
         })),
+      memory: buildChapterMemory({
+        currentChapter: {
+          slug: chapter.slug,
+          title: chapter.title,
+          order: chapter.order,
+          sceneGoal: chapter.sceneGoal ?? undefined
+        },
+        chapters: novel.chapters.map((item) => ({
+          slug: item.slug,
+          title: item.title,
+          summary: item.summary ?? undefined,
+          excerpt: excerpt(item.plainText),
+          order: item.order
+        })),
+        outlines: novel.outlines.map((item) => ({
+          id: item.id,
+          title: item.title,
+          summary: item.summary ?? undefined,
+          depth: item.depth,
+          order: item.order,
+          status: item.status,
+          chapterSlug: item.chapter?.slug
+        })),
+        foreshadows: novel.foreshadows.map((item) => ({
+          id: item.id,
+          hook: item.hook,
+          plannedPayoff: item.plannedPayoff ?? undefined,
+          status: item.status,
+          firstMentionChapterSlug: item.firstMentionChapter?.slug,
+          payoffChapterSlug: item.payoffChapter?.slug
+        })),
+        entities: novel.entities.map((entity) => ({
+          id: entity.id,
+          type: entity.type,
+          name: entity.name,
+          summary: entity.summary ?? undefined,
+          tags: entity.tags
+        }))
+      }),
       foreshadows: novel.foreshadows.map((item) => ({
         id: item.id,
         hook: item.hook,

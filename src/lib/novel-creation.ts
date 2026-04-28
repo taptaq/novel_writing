@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { novelStyleSampleSchema } from "@/lib/novel-style";
+import { novelLengthOptions } from "@/lib/novel-length";
 import type {
   CharacterSeedInput,
   GraphEntityKind,
@@ -42,6 +43,11 @@ const relationKinds = [
   "MEMBER_OF",
   "ROOTED_IN"
 ] as const satisfies readonly GraphRelationKind[];
+const novelLengthCategories = novelLengthOptions.map((option) => option.value) as [
+  "SHORT",
+  "MEDIUM",
+  "LONG"
+];
 
 const relationSeedSchema = z.object({
   sourceName: z.string().trim().min(1),
@@ -81,6 +87,7 @@ export const novelCreationSchema = z
     premise: z.string().trim().min(1, "一句话 premise 不能为空"),
     narrativeView: z.string().trim().min(1, "叙事视角不能为空"),
     storyStructure: z.string().trim().min(1, "故事结构不能为空"),
+    lengthCategory: z.enum(novelLengthCategories).default("MEDIUM"),
     plannedChapterCount: z.number().int().positive().optional(),
     targetWordsPerChapter: z.number().int().positive().optional(),
     worldSeed: z.string().trim().optional().default(""),
@@ -319,6 +326,7 @@ export function buildNovelCreationInput(raw: unknown) {
       targetAudience: input.targetAudience,
       narrativeView: input.narrativeView,
       storyStructure: input.storyStructure,
+      lengthCategory: input.lengthCategory,
       plannedChapterCount: input.plannedChapterCount,
       targetWordsPerChapter: input.targetWordsPerChapter,
       worldSeed: normalizeOptionalText(input.worldSeed),

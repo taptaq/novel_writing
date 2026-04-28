@@ -351,6 +351,8 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
               <h3>追加样文</h3>
             </div>
 
+            <p className="assist-meta">就在这里粘贴你认可的文段，然后点“加入样文”。</p>
+
             <div className="stack-column">
               <div className="creation-grid creation-grid-2">
                 <label className="field">

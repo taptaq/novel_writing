@@ -85,6 +85,17 @@ const chapterData: ChapterEditorData = {
     }
   ],
   relevantOutlines: [],
+  memory: {
+    previousChapterCount: 2,
+    storySoFar: [
+      "第1章《潮湿来信》：沈砚收到匿名来信。",
+      "第2章《旧港图》：老齐指出废栈桥的印记。"
+    ],
+    activeStoryLines: ["主线：潮汐钟失准：钟声失准会影响港城记忆。"],
+    openThreads: ["匿名来信 -> 信的真正收件人还没揭开。"],
+    keyEntities: ["沈砚：守钟人学徒"],
+    currentFocus: "让主角意识到危险"
+  },
   foreshadows: [
     {
       id: "foreshadow-1",
@@ -122,26 +133,25 @@ describe("ChapterComposer", () => {
     expect(options).toEqual(["自动", "Kimi", "GLM", "Mimo", "MiniMax", "Qwen", "DeepSeek", "系统兜底"]);
   });
 
-  it("lists writing skill presets for temporary chapter-level switching", () => {
+  it("lists writing skill presets as direct chapter-level actions", () => {
     const markup = renderToStaticMarkup(
       <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
     );
-    const selects = parseElements(markup, "select");
-    const skillSelect = selects.find((element) => element.attributes.name === "skillPresetId");
-    const options = skillSelect ? parseElements(skillSelect.html, "option").map((element) => element.text) : [];
+    const buttons = parseElements(markup, "button").map((element) => element.text);
 
-    expect(skillSelect).toBeDefined();
-    expect(options).toEqual([
-      "不使用预设",
-      "流程规划",
-      "章节任务卡",
-      "创作工具箱",
-      "文风守门",
-      "Crucible 规划",
-      "Crucible 大纲",
-      "Crucible 写作",
-      "Crucible 编辑"
-    ]);
+    expect(buttons).toEqual(
+      expect.arrayContaining([
+      "不使用",
+      "帮我想清楚怎么写",
+      "整理本章要写什么",
+      "整理设定和资料",
+      "去掉 AI 味",
+      "规划整本书",
+      "拆章节大纲",
+      "继续写一小段",
+      "帮我改顺改好"
+      ])
+    );
   });
 
   it("shows a lightweight style-profile hint with style constraints enabled by default", () => {
@@ -156,6 +166,19 @@ describe("ChapterComposer", () => {
     expect(normalizeWhitespace(stripTags(markup))).toContain("本次不使用文风约束");
     expect(enabledButton?.attributes["aria-pressed"]).toBe("true");
     expect(disabledButton?.attributes["aria-pressed"]).toBe("false");
+  });
+
+  it("shows a compact previous-story memory panel", () => {
+    const markup = renderToStaticMarkup(
+      <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
+    );
+    const text = normalizeWhitespace(stripTags(markup));
+
+    expect(text).toContain("前文记忆");
+    expect(text).toContain("已写 2 章");
+    expect(text).toContain("沈砚收到匿名来信");
+    expect(text).toContain("主线：潮汐钟失准");
+    expect(text).toContain("匿名来信 -&gt; 信的真正收件人还没揭开。");
   });
 
   it("shows a lightweight message instead of style toggle when no style profile is available", () => {

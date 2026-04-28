@@ -16,6 +16,12 @@ enum NovelStatus {
   ARCHIVED
 }
 
+enum NovelLengthCategory {
+  SHORT
+  MEDIUM
+  LONG
+}
+
 enum ChapterStatus {
   DRAFT
   REVIEW
@@ -87,6 +93,7 @@ model Novel {
   genre                 String?
   tone                  String?
   category              String?
+  lengthCategory        NovelLengthCategory @default(MEDIUM)
   subGenre              String?
   targetAudience        String?
   narrativeView         String?

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getNovelSummaries } from "@/lib/repositories/novels";
+import { getNovelLengthProfile } from "@/lib/novel-length";
 
 export default async function NovelsPage() {
   const novels = await getNovelSummaries();
@@ -23,6 +24,7 @@ export default async function NovelsPage() {
           {novels.map((novel) => {
             const summary =
               novel.summary ?? novel.premise ?? "进入这个项目，继续整理结构、设定与章节内容。";
+            const lengthProfile = getNovelLengthProfile(novel.lengthCategory);
 
             return (
               <Link href={`/novels/${novel.slug}`} key={novel.id} className="project-entry-card">
@@ -32,6 +34,7 @@ export default async function NovelsPage() {
                 </div>
                 <div className="stats-inline">
                   <span className="stat-pill">{novel.genre ?? "未分类"}</span>
+                  <span className="stat-pill">{lengthProfile.label}</span>
                   <span className="stat-pill">{novel.chapterCount} 章</span>
                   <span className="stat-pill">{novel.wordCount} 字</span>
                 </div>

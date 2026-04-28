@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getNovelSummaries } from "@/lib/repositories/novels";
+import { getNovelLengthProfile } from "@/lib/novel-length";
 
 const statusCards = [
   {
@@ -95,19 +96,24 @@ export default async function HomePage() {
         </div>
 
         <div className="landing-project-list">
-          {novels.map((novel) => (
-            <Link key={novel.id} href={`/novels/${novel.slug}`} className="project-entry-card">
-              <div className="project-entry-copy">
-                <h3>{novel.title}</h3>
-                <p>{novel.summary ?? novel.premise ?? "继续完善这部作品的设定与章节推进。"}</p>
-              </div>
-              <div className="stats-inline">
-                <span className="stat-pill">{novel.genre ?? "未分类"}</span>
-                <span className="stat-pill">{novel.chapterCount} 章</span>
-                <span className="stat-pill">{novel.wordCount} 字</span>
-              </div>
-            </Link>
-          ))}
+          {novels.map((novel) => {
+            const lengthProfile = getNovelLengthProfile(novel.lengthCategory);
+
+            return (
+              <Link key={novel.id} href={`/novels/${novel.slug}`} className="project-entry-card">
+                <div className="project-entry-copy">
+                  <h3>{novel.title}</h3>
+                  <p>{novel.summary ?? novel.premise ?? "继续完善这部作品的设定与章节推进。"}</p>
+                </div>
+                <div className="stats-inline">
+                  <span className="stat-pill">{novel.genre ?? "未分类"}</span>
+                  <span className="stat-pill">{lengthProfile.label}</span>
+                  <span className="stat-pill">{novel.chapterCount} 章</span>
+                  <span className="stat-pill">{novel.wordCount} 字</span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </section>
     </div>

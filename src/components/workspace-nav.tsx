@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 
 interface WorkspaceNavProps {
   novelSlug: string;
@@ -9,7 +10,10 @@ interface WorkspaceNavProps {
 }
 
 export function WorkspaceNav({ novelSlug, firstChapterSlug }: WorkspaceNavProps) {
+  const router = useRouter();
   const pathname = usePathname();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const items = [
     {
       href: `/novels/${novelSlug}`,
@@ -42,19 +46,56 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug }: WorkspaceNavProps)
         }
       : null
   ].filter(Boolean) as Array<{ href: string; label: string }>;
+  const normalizedPathname = normalizePath(pathname);
+
+  function navigateTo(href: string) {
+    if (normalizePath(href) === normalizedPathname) {
+      setPendingHref(null);
+      return;
+    }
+
+    setPendingHref(href);
+    startTransition(() => {
+      router.push(href);
+    });
+  }
 
   return (
     <nav className="workspace-nav" aria-label="作品工作区导航">
       {items.map((item) => {
+        const normalizedHref = normalizePath(item.href);
+        const isWriting = item.label === "写作";
         const isActive =
-          pathname === item.href || (item.label === "写作" && pathname.startsWith(`/novels/${novelSlug}/chapters/`));
+          normalizedPathname === normalizedHref ||
+          (isWriting && normalizedPathname.startsWith(`/novels/${novelSlug}/chapters/`));
+        const isNavigating = isPending && pendingHref === item.href;
 
         return (
-          <Link key={item.href} className={isActive ? "workspace-tab workspace-tab-active" : "workspace-tab"} href={item.href}>
+          <Link
+            key={item.href}
+            className={[
+              "workspace-tab",
+              isActive ? "workspace-tab-active" : "",
+              isNavigating ? "workspace-tab-pending" : ""
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            href={item.href}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateTo(item.href);
+            }}
+            aria-current={isActive ? "page" : undefined}
+          >
             {item.label}
           </Link>
         );
       })}
     </nav>
   );
+}
+
+function normalizePath(value: string) {
+  const withoutQuery = value.split("?")[0]?.split("#")[0] ?? value;
+  return withoutQuery.length > 1 ? withoutQuery.replace(/\/+$/g, "") : withoutQuery;
 }

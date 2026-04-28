@@ -3,8 +3,11 @@ import type {
   GraphEntityKind,
   NovelGraphData,
   NovelSummary,
+  NovelStyleWorkspace,
   NovelWorkspace
 } from "../types/domain";
+import { buildChapterMemory } from "./chapter-memory";
+import { normalizeStyleProfile } from "./novel-style";
 import { estimateWordCount, excerpt } from "./text/word-count";
 
 function isoDate(value: string): string {
@@ -37,6 +40,7 @@ export const demoSeed = {
       "故事围绕修钟匠学徒沈砚展开。他发现港城的潮汐钟并不只是报时装置，而是一台会替全城筛选记忆的旧式机器。每一次失准，都意味着有人会忘记真正重要的东西。",
     genre: "悬疑 / 都市奇幻",
     tone: "克制、贴地、慢热推进",
+    lengthCategory: "MEDIUM" as const,
     category: "悬疑",
     subGenre: "都市奇幻",
     targetAudience: "悬疑 / 都市奇幻读者",
@@ -236,6 +240,7 @@ function toNovelSummary() {
     summary: demoSeed.novel.summary,
     genre: demoSeed.novel.genre,
     tone: demoSeed.novel.tone,
+    lengthCategory: demoSeed.novel.lengthCategory,
     status: demoSeed.novel.status,
     updatedAt: demoSeed.novel.updatedAt.toISOString(),
     chapterCount: demoSeed.chapters.length,
@@ -330,6 +335,43 @@ export function getDemoGraphData(slug: string): NovelGraphData | null {
   };
 }
 
+export function getDemoStyleWorkspace(slug: string): NovelStyleWorkspace | null {
+  const workspace = getDemoWorkspace(slug);
+
+  if (!workspace) {
+    return null;
+  }
+
+  return {
+    novel: workspace.novel,
+    profile: normalizeStyleProfile({
+      styleSummary: demoSeed.novel.styleGoal,
+      styleRules: [
+        "少解释，多通过动作、停顿和对白推进。",
+        "句子不要太满，情绪落在细节里。"
+      ],
+      avoidRules: ["不要整齐排比", "不要用总结句替代场面"],
+      dialogueRules: ["对白保留留白，不要每句都说透。"],
+      narrationRules: ["镜头贴着人物感官走，少跳出评论。"],
+      rhythmRules: ["先短句切入，再用稍长句收束信息。"],
+      imageryRules: ["意象集中在海风、金属、潮汐、钟声。"],
+      status: "READY"
+    }),
+    samples: [
+      {
+        id: "demo-style-sample-1",
+        title: "灰港开场",
+        sourceType: "MANUAL_PASTE",
+        content:
+          "他停下手，朝海面看了一眼。今晚潮位不高，码头上却没有人说话，连装卸货箱的铁钩都放得格外轻。",
+        note: "偏克制，先动作后判断。",
+        isActive: true,
+        createdAt: demoMeta.generatedAt
+      }
+    ]
+  };
+}
+
 export function getDemoChapterEditor(novelSlug: string, chapterSlug: string): ChapterEditorData | null {
   const workspace = getDemoWorkspace(novelSlug);
   const chapter = demoSeed.chapters.find((item) => item.slug === chapterSlug);
@@ -355,6 +397,18 @@ export function getDemoChapterEditor(novelSlug: string, chapterSlug: string): Ch
     },
     entities: workspace.entities,
     relevantOutlines: workspace.outlines.filter((item) => item.chapterSlug === chapterSlug || item.depth === 0),
+    memory: buildChapterMemory({
+      currentChapter: {
+        slug: chapter.slug,
+        title: chapter.title,
+        order: chapter.order,
+        sceneGoal: chapter.sceneGoal
+      },
+      chapters: workspace.chapters,
+      outlines: workspace.outlines,
+      foreshadows: workspace.foreshadows,
+      entities: workspace.entities
+    }),
     foreshadows: workspace.foreshadows.filter((item) => item.firstMentionChapterSlug === chapterSlug || item.status === "OPEN")
   };
 }

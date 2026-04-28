@@ -114,6 +114,7 @@ describe("Novel style page contracts", () => {
     );
 
     expect(markup).toContain('href="/novels/glass-city/style"');
+    expect(markup).toContain('aria-current="page"');
     expect(markup).toContain(">文风<");
   });
 
@@ -135,9 +136,28 @@ describe("Novel style page contracts", () => {
   it("renders the style reference section on the creation form", () => {
     const markup = renderToStaticMarkup(<NovelCreationForm />);
 
+    expect(markup).toContain("AI 解析设定说明");
+    expect(markup).toContain("开始解析");
+    expect(markup).toContain("应用全部到表单");
+    expect(markup).toContain("只填空白项");
+    expect(markup).toContain("基础信息");
+    expect(markup).toContain("人物 1");
+    expect(markup).not.toContain("人物 2");
+    expect(markup).toContain("新增人物");
     expect(markup).toContain("文风参考");
     expect(markup).toContain("选填。现在先留空也可以，后续还能在书内继续投喂。");
     expect(markup).toContain("样文 1");
     expect(markup).toContain("样文内容");
+  });
+
+  it("renders length category controls and default planning hints on the creation form", () => {
+    const markup = renderToStaticMarkup(<NovelCreationForm />);
+
+    expect(markup).toContain("篇幅类型");
+    expect(markup).toContain("短篇");
+    expect(markup).toContain("中篇");
+    expect(markup).toContain("长篇");
+    expect(markup).toContain("默认建议");
+    expect(markup).toContain("功能侧重");
   });
 });

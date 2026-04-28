@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getNovelWorkspace } from "@/lib/repositories/novels";
+import { getLengthFeatureHints, getNovelLengthProfile } from "@/lib/novel-length";
 
 export default async function NovelOverviewPage({ params }: { params: { novelSlug: string } }) {
   const workspace = await getNovelWorkspace(params.novelSlug);
@@ -9,8 +10,35 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
     notFound();
   }
 
+  const lengthProfile = getNovelLengthProfile(workspace.novel.lengthCategory);
+  const lengthHints = getLengthFeatureHints(workspace.novel.lengthCategory);
+
   return (
     <div className="dashboard-grid">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="panel-eyebrow">篇幅规划</p>
+            <h2>{lengthProfile.label}</h2>
+          </div>
+        </div>
+
+        <article className="info-card">
+          <p>{lengthProfile.description}</p>
+          <p>{lengthProfile.structureHint}</p>
+          <div className="tag-list">
+            <span className="tag">建议 {lengthProfile.defaultChapterCount} 章</span>
+            <span className="tag">单章 {lengthProfile.defaultWordsPerChapter} 字</span>
+          </div>
+        </article>
+
+        <ul className="plain-list compact-list">
+          {lengthHints.map((hint) => (
+            <li key={hint}>{hint}</li>
+          ))}
+        </ul>
+      </section>
+
       <section className="panel">
         <div className="panel-header">
           <div>

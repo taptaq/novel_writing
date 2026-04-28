@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getNovelWorkspace } from "@/lib/repositories/novels";
 import { writingSkillPresets } from "@/lib/novel-writing-skills";
+import { getLengthFeatureHints, getNovelLengthProfile } from "@/lib/novel-length";
 
 const aiLanes = [
   "普通任务优先走轻模型，结构重写和长上下文审看再切高配模型。",
@@ -15,8 +16,28 @@ export default async function InsightsPage({ params }: { params: { novelSlug: st
     notFound();
   }
 
+  const lengthProfile = getNovelLengthProfile(workspace.novel.lengthCategory);
+  const lengthHints = getLengthFeatureHints(workspace.novel.lengthCategory);
+
   return (
     <div className="dashboard-grid">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="panel-eyebrow">篇幅策略</p>
+            <h2>{lengthProfile.label}</h2>
+          </div>
+        </div>
+
+        <p className="muted-text">{lengthProfile.structureHint}</p>
+        <div className="tag-list">
+          <span className="tag">图谱 {lengthProfile.moduleMode.graph}</span>
+          <span className="tag">大纲 {lengthProfile.moduleMode.outline}</span>
+          <span className="tag">伏笔 {lengthProfile.moduleMode.foreshadow}</span>
+          <span className="tag">资料 {lengthProfile.moduleMode.research}</span>
+        </div>
+      </section>
+
       <section className="panel">
         <div className="panel-header">
           <div>
@@ -43,6 +64,21 @@ export default async function InsightsPage({ params }: { params: { novelSlug: st
         <ul className="plain-list">
           {workspace.voiceRules.map((rule) => (
             <li key={rule}>{rule}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel panel-wide">
+        <div className="panel-header">
+          <div>
+            <p className="panel-eyebrow">动态功能建议</p>
+            <h2>按篇幅调整工作区</h2>
+          </div>
+        </div>
+
+        <ul className="plain-list">
+          {lengthHints.map((hint) => (
+            <li key={hint}>{hint}</li>
           ))}
         </ul>
       </section>

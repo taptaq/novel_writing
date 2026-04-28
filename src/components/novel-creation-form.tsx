@@ -1,9 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useState } from "react";
-import type { CharacterSeedInput } from "@/types/domain";
+import {
+  detectSetupFileType,
+  readSetupFileAsText
+} from "@/lib/file-text-extractor";
+import {
+  getLengthFeatureHints,
+  getNovelLengthProfile,
+  novelLengthOptions
+} from "@/lib/novel-length";
+import type {
+  CharacterSeedInput,
+  NovelLengthCategory,
+  ParsedSetupCharacterSeed,
+  ParsedSetupDraft
+} from "@/types/domain";
 
 type StyleSampleFormInput = {
   title: string;
@@ -19,6 +33,7 @@ type CreationFormState = {
   premise: string;
   narrativeView: string;
   storyStructure: string;
+  lengthCategory: NovelLengthCategory;
   plannedChapterCount: string;
   targetWordsPerChapter: string;
   worldSeed: string;
@@ -27,19 +42,60 @@ type CreationFormState = {
   characterSeeds: CharacterSeedInput[];
 };
 
-const initialCharacterSeeds: CharacterSeedInput[] = Array.from({ length: 3 }, () => ({
+type ParsedDraftApplyMode = "replace_all" | "fill_empty";
+
+const MAX_CHARACTER_SEEDS = 3;
+const MIN_CHARACTER_SEEDS = 1;
+const MAX_STYLE_SAMPLES = 3;
+
+export const createEmptyCharacterSeed = (): CharacterSeedInput => ({
   name: "",
   role: "",
   summary: "",
   factionName: "",
   locationName: ""
-}));
+});
+
+export function createInitialCharacterSeeds(): CharacterSeedInput[] {
+  return [createEmptyCharacterSeed()];
+}
+
+export function addCharacterSeed(characterSeeds: CharacterSeedInput[]): CharacterSeedInput[] {
+  if (characterSeeds.length >= MAX_CHARACTER_SEEDS) {
+    return characterSeeds;
+  }
+
+  return [...characterSeeds, createEmptyCharacterSeed()];
+}
+
+export function removeCharacterSeed(
+  characterSeeds: CharacterSeedInput[],
+  index: number
+): CharacterSeedInput[] {
+  if (characterSeeds.length <= MIN_CHARACTER_SEEDS) {
+    return characterSeeds;
+  }
+
+  return characterSeeds.filter((_, itemIndex) => itemIndex !== index);
+}
+
+const initialCharacterSeeds: CharacterSeedInput[] = createInitialCharacterSeeds();
 
 const initialStyleSamples: StyleSampleFormInput[] = Array.from({ length: 3 }, () => ({
   title: "",
   content: "",
   note: ""
 }));
+
+export function createInitialParsedSetupDraft(): ParsedSetupDraft {
+  return {
+    styleSamples: [],
+    characterSeeds: [],
+    guessedFields: [],
+    missingFields: [],
+    confidenceNotes: []
+  };
+}
 
 const initialFormState: CreationFormState = {
   title: "",
@@ -49,8 +105,9 @@ const initialFormState: CreationFormState = {
   premise: "",
   narrativeView: "第三人称有限视角",
   storyStructure: "三幕结构",
-  plannedChapterCount: "",
-  targetWordsPerChapter: "",
+  lengthCategory: "MEDIUM",
+  plannedChapterCount: String(getNovelLengthProfile("MEDIUM").defaultChapterCount),
+  targetWordsPerChapter: String(getNovelLengthProfile("MEDIUM").defaultWordsPerChapter),
   worldSeed: "",
   styleGoal: "",
   styleSamples: initialStyleSamples,
@@ -91,6 +148,138 @@ function normalizeCharacterSeeds(characterSeeds: CharacterSeedInput[]) {
     );
 }
 
+function normalizeStyleSampleInput(sample?: Partial<StyleSampleFormInput>): StyleSampleFormInput {
+  return {
+    title: sample?.title?.trim() ?? "",
+    content: sample?.content?.trim() ?? "",
+    note: sample?.note?.trim() ?? ""
+  };
+}
+
+function normalizeParsedCharacterSeed(seed?: Partial<ParsedSetupCharacterSeed>): CharacterSeedInput {
+  return {
+    name: seed?.name?.trim() ?? "",
+    role: seed?.role?.trim() ?? "",
+    summary: seed?.summary?.trim() ?? "",
+    factionName: seed?.factionName?.trim() ?? "",
+    locationName: seed?.locationName?.trim() ?? ""
+  };
+}
+
+function isCharacterSeedBlank(seed: CharacterSeedInput) {
+  return !hasValue(seed.name) &&
+    !hasValue(seed.role) &&
+    !hasValue(seed.summary) &&
+    !hasValue(seed.factionName) &&
+    !hasValue(seed.locationName);
+}
+
+function isStyleSampleBlank(sample: StyleSampleFormInput) {
+  return !hasValue(sample.title) && !hasValue(sample.content) && !hasValue(sample.note);
+}
+
+function hasValue(value?: string | number | null) {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function mergeTextValue(
+  currentValue: string,
+  nextValue: string | undefined,
+  mode: ParsedDraftApplyMode
+) {
+  if (!hasValue(nextValue)) {
+    return currentValue;
+  }
+
+  if (mode === "replace_all") {
+    return nextValue!.trim();
+  }
+
+  return hasValue(currentValue) ? currentValue : nextValue!.trim();
+}
+
+function mergeCharacterSeed(
+  currentSeed: CharacterSeedInput,
+  parsedSeed: CharacterSeedInput | undefined,
+  mode: ParsedDraftApplyMode
+) {
+  if (!parsedSeed) {
+    return mode === "replace_all" ? createEmptyCharacterSeed() : currentSeed;
+  }
+
+  if (mode === "replace_all") {
+    return parsedSeed;
+  }
+
+  return isCharacterSeedBlank(currentSeed) ? parsedSeed : currentSeed;
+}
+
+export function applyParsedSetupDraft(
+  currentForm: CreationFormState,
+  draft: ParsedSetupDraft,
+  mode: ParsedDraftApplyMode
+): CreationFormState {
+  const parsedCharacterSeeds = draft.characterSeeds
+    .slice(0, MAX_CHARACTER_SEEDS)
+    .map((item) => normalizeParsedCharacterSeed(item));
+  const nextCharacterSeedCount = Math.min(
+    MAX_CHARACTER_SEEDS,
+    Math.max(currentForm.characterSeeds.length, parsedCharacterSeeds.length, MIN_CHARACTER_SEEDS)
+  );
+  const currentCharacterSeeds = Array.from({ length: nextCharacterSeedCount }, (_, index) => {
+    return currentForm.characterSeeds[index] ?? createEmptyCharacterSeed();
+  });
+  const parsedStyleSamples = draft.styleSamples
+    .slice(0, MAX_STYLE_SAMPLES)
+    .map((item) => normalizeStyleSampleInput(item));
+
+  return {
+    ...currentForm,
+    title: mergeTextValue(currentForm.title, draft.title, mode),
+    category: mergeTextValue(currentForm.category, draft.category, mode),
+    subGenre: mergeTextValue(currentForm.subGenre, draft.subGenre, mode),
+    targetAudience: mergeTextValue(currentForm.targetAudience, draft.targetAudience, mode),
+    premise: mergeTextValue(currentForm.premise, draft.premise, mode),
+    narrativeView: mergeTextValue(currentForm.narrativeView, draft.narrativeView, mode),
+    storyStructure: mergeTextValue(currentForm.storyStructure, draft.storyStructure, mode),
+    lengthCategory:
+      mode === "replace_all"
+        ? draft.lengthCategory ?? currentForm.lengthCategory
+        : currentForm.lengthCategory ?? draft.lengthCategory ?? "MEDIUM",
+    plannedChapterCount: mergeTextValue(
+      currentForm.plannedChapterCount,
+      draft.plannedChapterCount ? String(draft.plannedChapterCount) : undefined,
+      mode
+    ),
+    targetWordsPerChapter: mergeTextValue(
+      currentForm.targetWordsPerChapter,
+      draft.targetWordsPerChapter ? String(draft.targetWordsPerChapter) : undefined,
+      mode
+    ),
+    worldSeed: mergeTextValue(currentForm.worldSeed, draft.worldSeed, mode),
+    styleGoal: mergeTextValue(currentForm.styleGoal, draft.styleGoal, mode),
+    styleSamples: currentForm.styleSamples.map((sample, index) => {
+      const parsedSample = parsedStyleSamples[index];
+      if (!parsedSample) {
+        return mode === "replace_all" ? normalizeStyleSampleInput() : sample;
+      }
+
+      if (mode === "replace_all") {
+        return parsedSample;
+      }
+
+      return isStyleSampleBlank(sample) ? parsedSample : sample;
+    }),
+    characterSeeds: currentCharacterSeeds.map((seed, index) =>
+      mergeCharacterSeed(seed, parsedCharacterSeeds[index], mode)
+    )
+  };
+}
+
 function readErrorMessage(payload: unknown) {
   if (!payload || typeof payload !== "object") {
     return "创建作品失败，请稍后再试。";
@@ -98,6 +287,10 @@ function readErrorMessage(payload: unknown) {
 
   if ("error" in payload && typeof payload.error === "string") {
     return payload.error;
+  }
+
+  if ("message" in payload && typeof payload.message === "string") {
+    return payload.message;
   }
 
   if (
@@ -118,6 +311,10 @@ function readErrorMessage(payload: unknown) {
 export function NovelCreationForm() {
   const router = useRouter();
   const [form, setForm] = useState(initialFormState);
+  const [setupSourceText, setSetupSourceText] = useState("");
+  const [setupSourceFileName, setSetupSourceFileName] = useState("");
+  const [parsedSetupDraft, setParsedSetupDraft] = useState<ParsedSetupDraft | null>(null);
+  const [isParsingSetup, setIsParsingSetup] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,6 +326,30 @@ export function NovelCreationForm() {
       ...current,
       [key]: value
     }));
+  }
+
+  function applyLengthCategory(value: NovelLengthCategory) {
+    setForm((current) => {
+      const previousProfile = getNovelLengthProfile(current.lengthCategory);
+      const nextProfile = getNovelLengthProfile(value);
+      const shouldRefreshChapterCount =
+        !current.plannedChapterCount ||
+        current.plannedChapterCount === String(previousProfile.defaultChapterCount);
+      const shouldRefreshWordsPerChapter =
+        !current.targetWordsPerChapter ||
+        current.targetWordsPerChapter === String(previousProfile.defaultWordsPerChapter);
+
+      return {
+        ...current,
+        lengthCategory: value,
+        plannedChapterCount: shouldRefreshChapterCount
+          ? String(nextProfile.defaultChapterCount)
+          : current.plannedChapterCount,
+        targetWordsPerChapter: shouldRefreshWordsPerChapter
+          ? String(nextProfile.defaultWordsPerChapter)
+          : current.targetWordsPerChapter
+      };
+    });
   }
 
   function updateCharacterSeed(
@@ -149,6 +370,24 @@ export function NovelCreationForm() {
     }));
   }
 
+  function handleAddCharacterSeed() {
+    setForm((current) => {
+      return {
+        ...current,
+        characterSeeds: addCharacterSeed(current.characterSeeds)
+      };
+    });
+  }
+
+  function handleRemoveCharacterSeed(index: number) {
+    setForm((current) => {
+      return {
+        ...current,
+        characterSeeds: removeCharacterSeed(current.characterSeeds, index)
+      };
+    });
+  }
+
   function updateStyleSample(index: number, key: keyof StyleSampleFormInput, value: string) {
     setForm((current) => ({
       ...current,
@@ -161,6 +400,76 @@ export function NovelCreationForm() {
           : item
       )
     }));
+  }
+
+  async function handleSetupFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      setSetupSourceFileName("");
+      setParsedSetupDraft(null);
+      return;
+    }
+
+    setParsedSetupDraft(null);
+
+    try {
+      const fileText = await readSetupFileAsText(file);
+      setSetupSourceText(fileText);
+      setSetupSourceFileName(file.name);
+      setError(null);
+    } catch (error) {
+      setParsedSetupDraft(null);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "读取设定文件失败，请改用粘贴文本或重新上传。"
+      );
+    }
+  }
+
+  async function handleSetupParse() {
+    setError(null);
+    setIsParsingSetup(true);
+
+    try {
+      const sourceType = setupSourceFileName
+        ? detectSetupFileType(setupSourceFileName) ?? undefined
+        : undefined;
+      const response = await fetch("/api/novels/parse-setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          sourceText: setupSourceText,
+          sourceName: setupSourceFileName || undefined,
+          sourceType
+        })
+      });
+      const result = (await response.json()) as
+        | { draft: ParsedSetupDraft; promptPreview?: string }
+        | { error?: string; message?: string; issues?: Array<{ message?: string }> };
+
+      if (!response.ok || !("draft" in result)) {
+        setError(readErrorMessage(result));
+        return;
+      }
+
+      setParsedSetupDraft(result.draft);
+    } catch {
+      setError("解析设定失败，请检查网络后重试。");
+    } finally {
+      setIsParsingSetup(false);
+    }
+  }
+
+  function handleApplyParsedSetup(mode: ParsedDraftApplyMode) {
+    if (!parsedSetupDraft) {
+      return;
+    }
+
+    setForm((current) => applyParsedSetupDraft(current, parsedSetupDraft, mode));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -187,6 +496,7 @@ export function NovelCreationForm() {
       premise: form.premise,
       narrativeView: form.narrativeView,
       storyStructure: form.storyStructure,
+      lengthCategory: form.lengthCategory,
       plannedChapterCount: toOptionalNumber(form.plannedChapterCount),
       targetWordsPerChapter: toOptionalNumber(form.targetWordsPerChapter),
       worldSeed: form.worldSeed,
@@ -228,8 +538,106 @@ export function NovelCreationForm() {
     }
   }
 
+  const lengthProfile = getNovelLengthProfile(form.lengthCategory);
+  const lengthHints = getLengthFeatureHints(form.lengthCategory);
+
   return (
     <form className="creation-form" onSubmit={handleSubmit}>
+      <section className="creation-section">
+        <div className="creation-section-heading">
+          <h2>AI 解析设定说明</h2>
+          <p>支持粘贴文本或上传设定文件，先生成回填草稿，再由你确认应用。</p>
+        </div>
+
+        <label className="field">
+          <span className="field-label">设定原文</span>
+          <textarea
+            className="form-textarea"
+            value={setupSourceText}
+            onChange={(event) => {
+              setSetupSourceText(event.target.value);
+              setParsedSetupDraft(null);
+            }}
+            placeholder="粘贴故事设定、人物介绍、世界观说明等内容，解析后会先生成预览草稿。"
+          />
+        </label>
+
+        <div className="creation-grid creation-grid-2">
+          <label className="field">
+            <span className="field-label">上传设定文件</span>
+            <input
+              type="file"
+              className="text-input"
+              accept=".txt,.md,.docx,.pdf"
+              onChange={handleSetupFileChange}
+            />
+          </label>
+
+          <div className="field">
+            <span className="field-label">当前来源</span>
+            <div className="note-box">
+              <p>{setupSourceFileName || "未上传文件，当前将使用上方粘贴文本。"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="creation-section-heading">
+          <button
+            type="button"
+            className="button-primary"
+            onClick={handleSetupParse}
+            disabled={isParsingSetup}
+          >
+            {isParsingSetup ? "解析中..." : "开始解析"}
+          </button>
+        </div>
+
+        <article className="seed-card">
+          <div className="seed-card-header">
+            <strong>解析预览</strong>
+          </div>
+
+          <div className="creation-grid creation-grid-2">
+            <div className="note-box">
+              <p className="field-label">一句话 premise</p>
+              <p>{parsedSetupDraft?.premise?.trim() || "暂无 premise，解析后会先在这里预览。"}</p>
+            </div>
+
+            <div className="note-box">
+              <p className="field-label">人物草稿</p>
+              <p>
+                {parsedSetupDraft && parsedSetupDraft.characterSeeds.length > 0
+                  ? parsedSetupDraft.characterSeeds
+                      .slice(0, MAX_CHARACTER_SEEDS)
+                      .map((item) => item.name)
+                      .filter(Boolean)
+                      .join(" / ")
+                  : "暂无人物种子，解析后会显示可回填的人物摘要。"}
+              </p>
+            </div>
+          </div>
+
+          <div className="tag-list">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => handleApplyParsedSetup("replace_all")}
+              disabled={!parsedSetupDraft}
+            >
+              应用全部到表单
+            </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => handleApplyParsedSetup("fill_empty")}
+              disabled={!parsedSetupDraft}
+            >
+              只填空白项
+            </button>
+          </div>
+        </article>
+      </section>
+
       <section className="creation-section">
         <div className="creation-section-heading">
           <h2>基础信息</h2>
@@ -306,6 +714,21 @@ export function NovelCreationForm() {
               ))}
             </select>
           </label>
+
+          <label className="field">
+            <span className="field-label">篇幅类型</span>
+            <select
+              className="text-input"
+              value={form.lengthCategory}
+              onChange={(event) => applyLengthCategory(event.target.value as NovelLengthCategory)}
+            >
+              {novelLengthOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <label className="field">
@@ -324,6 +747,30 @@ export function NovelCreationForm() {
           <h2>扩展策划</h2>
           <p>可填，但很有用。</p>
         </div>
+
+        <article className="length-guidance-card">
+          <div>
+            <p className="field-label">默认建议</p>
+            <h3>{lengthProfile.label}</h3>
+            <p>{lengthProfile.description}</p>
+            <p>{lengthProfile.structureHint}</p>
+          </div>
+          <div className="tag-list">
+            <span className="tag">图谱 {lengthProfile.moduleMode.graph}</span>
+            <span className="tag">大纲 {lengthProfile.moduleMode.outline}</span>
+            <span className="tag">伏笔 {lengthProfile.moduleMode.foreshadow}</span>
+            <span className="tag">资料 {lengthProfile.moduleMode.research}</span>
+            <span className="tag">文风 {lengthProfile.moduleMode.style}</span>
+          </div>
+          <div className="note-box">
+            <p className="field-label">功能侧重</p>
+            <ul className="plain-list compact-list">
+              {lengthHints.map((hint) => (
+                <li key={hint}>{hint}</li>
+              ))}
+            </ul>
+          </div>
+        </article>
 
         <div className="creation-grid creation-grid-2">
           <label className="field">
@@ -370,8 +817,18 @@ export function NovelCreationForm() {
 
       <section className="creation-section">
         <div className="creation-section-heading">
-          <h2>人物种子</h2>
-          <p>支持 1 到 3 个，留空会跳过。</p>
+          <div>
+            <h2>人物种子</h2>
+            <p>支持 1 到 3 个，留空会跳过。</p>
+          </div>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={handleAddCharacterSeed}
+            disabled={form.characterSeeds.length >= MAX_CHARACTER_SEEDS}
+          >
+            新增人物
+          </button>
         </div>
 
         <div className="creation-seed-grid">
@@ -379,6 +836,15 @@ export function NovelCreationForm() {
             <article key={index} className="seed-card">
               <div className="seed-card-header">
                 <strong>人物 {index + 1}</strong>
+                {form.characterSeeds.length > MIN_CHARACTER_SEEDS ? (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => handleRemoveCharacterSeed(index)}
+                  >
+                    删除
+                  </button>
+                ) : null}
               </div>
 
               <div className="creation-grid creation-grid-2">

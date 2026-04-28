@@ -1,5 +1,6 @@
 export type NovelStatus = "PLANNING" | "DRAFTING" | "HIATUS" | "COMPLETED" | "ARCHIVED";
 export type ChapterStatus = "DRAFT" | "REVIEW" | "READY" | "PUBLISHED";
+export type NovelLengthCategory = "SHORT" | "MEDIUM" | "LONG";
 export type EntityKind = "CHARACTER" | "LOCATION" | "FACTION" | "ITEM" | "RULE" | "EVENT";
 export type GraphEntityKind = "CHARACTER" | "FACTION" | "LOCATION";
 export type GraphRelationKind =
@@ -20,6 +21,7 @@ export interface NovelSummary {
   summary?: string;
   genre?: string;
   tone?: string;
+  lengthCategory?: NovelLengthCategory;
   status: NovelStatus;
   updatedAt: string;
   chapterCount: number;
@@ -82,7 +84,17 @@ export interface ChapterEditorData {
   chapter: ChapterSummary;
   entities: StoryEntitySummary[];
   relevantOutlines: OutlineSummary[];
+  memory?: ChapterMemorySummary;
   foreshadows: ForeshadowSummary[];
+}
+
+export interface ChapterMemorySummary {
+  previousChapterCount: number;
+  storySoFar: string[];
+  activeStoryLines: string[];
+  openThreads: string[];
+  keyEntities: string[];
+  currentFocus?: string;
 }
 
 export interface StyleSampleInput {
@@ -128,6 +140,34 @@ export interface CharacterSeedInput {
   locationName?: string;
 }
 
+export interface ParsedSetupCharacterSeed {
+  name: string;
+  role?: string;
+  summary?: string;
+  factionName?: string;
+  locationName?: string;
+}
+
+export interface ParsedSetupDraft {
+  title?: string;
+  category?: string;
+  subGenre?: string;
+  targetAudience?: string;
+  premise?: string;
+  narrativeView?: string;
+  storyStructure?: string;
+  lengthCategory?: NovelLengthCategory;
+  plannedChapterCount?: number;
+  targetWordsPerChapter?: number;
+  worldSeed?: string;
+  styleGoal?: string;
+  styleSamples: StyleSampleInput[];
+  characterSeeds: ParsedSetupCharacterSeed[];
+  guessedFields: string[];
+  missingFields: string[];
+  confidenceNotes: string[];
+}
+
 export interface RelationSeedInput {
   sourceName: string;
   targetName: string;
@@ -145,6 +185,7 @@ export interface NovelCreationInput {
   premise: string;
   narrativeView: string;
   storyStructure: string;
+  lengthCategory?: NovelLengthCategory;
   plannedChapterCount?: number;
   targetWordsPerChapter?: number;
   worldSeed?: string;
