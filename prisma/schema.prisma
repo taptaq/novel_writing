@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum NovelStatus {
+  PLANNING
+  DRAFTING
+  HIATUS
+  COMPLETED
+  ARCHIVED
+}
+
+enum ChapterStatus {
+  DRAFT
+  REVIEW
+  READY
+  PUBLISHED
+}
+
+enum EntityType {
+  CHARACTER
+  LOCATION
+  FACTION
+  ITEM
+  RULE
+  EVENT
+}
+
+enum RelationType {
+  ALLY
+  ENEMY
+  FAMILY
+  MENTOR
+  SUBORDINATE
+  OTHER
+}
+
+enum SuggestionType {
+  CONTINUE
+  REWRITE
+  POLISH
+  OUTLINE
+  AUDIT
+}
+
+enum SuggestionState {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
+enum StyleProfileStatus {
+  EMPTY
+  READY
+  FAILED
+}
+
+enum StyleSampleSourceType {
+  USER_SAMPLE
+  EXISTING_CHAPTER
+  MANUAL_PASTE
+}
+
+model ProjectSetting {
+  id                 String   @id @default("default")
+  workspaceName      String   @default("Human Draft Studio")
+  defaultAiMode      String   @default("ON_DEMAND")
+  preferredModel     String?
+  aiInterventionHint String?
+  voiceGuardrails    Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Novel {
+  id                    String        @id @default(cuid())
+  slug                  String        @unique
+  title                 String
+  premise               String?
+  summary               String?
+  genre                 String?
+  tone                  String?
+  category              String?
+  subGenre              String?
+  targetAudience        String?
+  narrativeView         String?
+  storyStructure        String?
+  plannedChapterCount   Int?
+  targetWordsPerChapter Int?
+  styleGoal             String?
+  worldSeed             String?        @db.Text
+  status                NovelStatus   @default(PLANNING)
+  voiceRules            Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  volumes               Volume[]
+  chapters              Chapter[]
+  outlines              OutlineNode[]
+  entities              StoryEntity[]
+  foreshadows           Foreshadow[]
+  suggestions           AiSuggestion[]
+  styleProfile          NovelStyleProfile?
+  styleSamples          NovelStyleSample[]
+}
+
+model NovelStyleProfile {
+  id              String             @id @default(cuid())
+  novelId         String             @unique
+  styleSummary    String?
+  styleRules      Json?
+  avoidRules      Json?
+  dialogueRules   Json?
+  narrationRules  Json?
+  rhythmRules     Json?
+  imageryRules    Json?
+  status          StyleProfileStatus @default(EMPTY)
+  lastGeneratedAt DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  novel           Novel              @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}
+
+model NovelStyleSample {
+  id         String                @id @default(cuid())
+  novelId    String
+  title      String?
+  sourceType StyleSampleSourceType @default(MANUAL_PASTE)
+  content    String                @db.Text
+  note       String?
+  isActive   Boolean               @default(true)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+  novel      Novel                 @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@index([novelId, isActive])
+}
+
+model Volume {
+  id        String   @id @default(cuid())
+  novelId   String
+  slug      String
+  title     String
+  summary   String?
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapters  Chapter[]
+
+  @@unique([novelId, slug])
+  @@unique([novelId, order])
+}
+
+model Chapter {
+  id                       String           @id @default(cuid())
+  novelId                  String
+  volumeId                 String?
+  slug                     String
+  title                    String
+  summary                  String?
+  sceneGoal                String?
+  content                  Json
+  plainText                String           @db.Text
+  status                   ChapterStatus    @default(DRAFT)
+  order                    Int
+  wordCount                Int              @default(0)
+  beatLabel                String?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  novel                    Novel            @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  volume                   Volume?          @relation(fields: [volumeId], references: [id], onDelete: SetNull)
+  versions                 ChapterVersion[]
+  suggestions              AiSuggestion[]
+  outlineNodes             OutlineNode[]
+  firstMentionedForeshadow Foreshadow[]     @relation("ForeshadowFirstMention")
+  payoffForeshadows        Foreshadow[]     @relation("ForeshadowPayoff")
+
+  @@unique([novelId, slug])
+  @@unique([novelId, order])
+}
+
+model ChapterVersion {
+  id          String   @id @default(cuid())
+  chapterId   String
+  source      String   @default("manual")
+  note        String?
+  content     Json
+  plainText   String   @db.Text
+  createdAt   DateTime @default(now())
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+}
+
+model StoryEntity {
+  id              String           @id @default(cuid())
+  novelId         String
+  type            EntityType
+  name            String
+  aliases         String[]
+  summary         String?
+  tags            String[]
+  profile         Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  novel           Novel            @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  sourceRelations EntityRelation[] @relation("SourceEntity")
+  targetRelations EntityRelation[] @relation("TargetEntity")
+
+  @@unique([novelId, name])
+}
+
+model EntityRelation {
+  id          String       @id @default(cuid())
+  sourceId    String
+  targetId    String
+  type        RelationType
+  description String?
+  remark      String?
+  note        String?
+  source      StoryEntity  @relation("SourceEntity", fields: [sourceId], references: [id], onDelete: Cascade)
+  target      StoryEntity  @relation("TargetEntity", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+model OutlineNode {
+  id        String       @id @default(cuid())
+  novelId   String
+  chapterId String?
+  parentId  String?
+  title     String
+  summary   String?
+  order     Int
+  depth     Int          @default(0)
+  status    String       @default("PLANNED")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  novel     Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapter   Chapter?     @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  parent    OutlineNode? @relation("OutlineTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  OutlineNode[] @relation("OutlineTree")
+}
+
+model Foreshadow {
+  id                    String    @id @default(cuid())
+  novelId               String
+  hook                  String
+  plannedPayoff         String?
+  status                String    @default("OPEN")
+  firstMentionChapterId String?
+  payoffChapterId       String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  novel                 Novel     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  firstMentionChapter   Chapter?  @relation("ForeshadowFirstMention", fields: [firstMentionChapterId], references: [id], onDelete: SetNull)
+  payoffChapter         Chapter?  @relation("ForeshadowPayoff", fields: [payoffChapterId], references: [id], onDelete: SetNull)
+}
+
+model AiSuggestion {
+  id            String          @id @default(cuid())
+  novelId       String
+  chapterId     String?
+  type          SuggestionType
+  instruction   String
+  sourceText    String          @db.Text
+  suggestedText String          @db.Text
+  rationale     Json?
+  state         SuggestionState @default(PENDING)
+  createdAt     DateTime        @default(now())
+  novel         Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapter       Chapter?        @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+}

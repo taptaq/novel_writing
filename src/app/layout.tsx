@@ -1,0 +1,53 @@
+import type { ReactNode } from "react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { env } from "@/lib/env";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: `${env.appName} · AI 小说写作台`,
+  description: "一个以长篇小说创作为核心的 AI 共创工作台。"
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="zh-CN">
+      <body>
+        <div className="site-shell">
+          <aside className="site-sidebar">
+            <Link href="/" className="brand-block">
+              <span className="brand-mark">HD</span>
+              <div>
+                <strong>{env.appName}</strong>
+                <p>AI 共创，不抢作者笔</p>
+              </div>
+            </Link>
+
+            <nav className="sidebar-nav">
+              <Link href="/" className="sidebar-link">
+                首页
+              </Link>
+              <Link href="/novels" className="sidebar-link">
+                作品库
+              </Link>
+              <Link href="/novels/tide-and-embers" className="sidebar-link">
+                示例工作区
+              </Link>
+            </nav>
+
+            <div className="sidebar-card">
+              <p className="panel-eyebrow">默认原则</p>
+              <ul className="plain-list compact-list">
+                <li>AI 只给建议稿，不直接覆盖原文。</li>
+                <li>先保人设、逻辑和节奏，再谈修辞。</li>
+                <li>少形容词，多动作和细节。</li>
+              </ul>
+            </div>
+          </aside>
+
+          <main className="site-main">{children}</main>
+        </div>
+      </body>
+    </html>
+  );
+}

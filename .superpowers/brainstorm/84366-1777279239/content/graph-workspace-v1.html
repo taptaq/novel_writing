@@ -1,0 +1,103 @@
+<h2>关系图工作台 V1</h2>
+<p class="subtitle">默认只看人物，可切换到人物 + 势力 + 地点；点击节点后联动高亮与右侧详情。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">图谱页布局</div>
+    <div class="mockup-body">
+      <div style="display:grid;grid-template-columns:220px minmax(0,1fr) 280px;gap:14px;min-height:420px;">
+        <div style="border:1px solid #d9d1c4;border-radius:16px;padding:14px;background:#faf7f2;">
+          <div class="label">左侧筛选</div>
+          <h3 style="margin-top:8px;">显示范围</h3>
+          <div style="display:grid;gap:10px;margin-top:12px;">
+            <div style="padding:10px 12px;border-radius:12px;background:#1e293b;color:#fff;">人物</div>
+            <div style="padding:10px 12px;border-radius:12px;border:1px solid #d9d1c4;">人物 + 势力</div>
+            <div style="padding:10px 12px;border-radius:12px;border:1px solid #d9d1c4;">人物 + 势力 + 地点</div>
+          </div>
+          <h3 style="margin-top:18px;">图谱操作</h3>
+          <div style="display:grid;gap:10px;margin-top:12px;">
+            <div style="padding:10px 12px;border-radius:12px;background:#c9782a;color:#fff;">导出当前关系图 PNG</div>
+            <div style="padding:10px 12px;border-radius:12px;border:1px solid #d9d1c4;">重置视图</div>
+          </div>
+        </div>
+
+        <div style="border:1px solid #d9d1c4;border-radius:16px;padding:14px;background:linear-gradient(180deg,#fffdf8,#f5efe6);position:relative;overflow:hidden;">
+          <div class="label">中间画布</div>
+          <h3 style="margin-top:8px;">玻璃城遗闻 · 当前关系图</h3>
+          <svg viewBox="0 0 560 320" style="width:100%;height:320px;margin-top:12px;">
+            <line x1="165" y1="110" x2="290" y2="86" stroke="#d8a26d" stroke-width="3" />
+            <line x1="165" y1="110" x2="260" y2="215" stroke="#d8a26d" stroke-width="3" />
+            <line x1="290" y1="86" x2="410" y2="150" stroke="#d9d1c4" stroke-width="2.5" stroke-dasharray="6 6" />
+            <line x1="260" y1="215" x2="410" y2="150" stroke="#d9d1c4" stroke-width="2.5" />
+
+            <circle cx="165" cy="110" r="42" fill="#1e293b" />
+            <text x="165" y="116" text-anchor="middle" fill="#ffffff" font-size="16">祝衡</text>
+
+            <circle cx="290" cy="86" r="34" fill="#c9782a" />
+            <text x="290" y="91" text-anchor="middle" fill="#ffffff" font-size="13">城档馆</text>
+
+            <circle cx="260" cy="215" r="34" fill="#4b6b5a" />
+            <text x="260" y="220" text-anchor="middle" fill="#ffffff" font-size="12">下城档案塔</text>
+
+            <circle cx="410" cy="150" r="30" fill="#e7dccd" stroke="#9a7b57" stroke-width="2" />
+            <text x="410" y="155" text-anchor="middle" fill="#6a4f35" font-size="12">失踪姐姐</text>
+          </svg>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <span style="padding:6px 10px;border-radius:999px;background:#ece8e1;">实线：直接关系</span>
+            <span style="padding:6px 10px;border-radius:999px;background:#ece8e1;">虚线：弱关联 / 间接线索</span>
+            <span style="padding:6px 10px;border-radius:999px;background:#ece8e1;">深色高亮：当前选中人物</span>
+          </div>
+        </div>
+
+        <div style="border:1px solid #d9d1c4;border-radius:16px;padding:14px;background:#faf7f2;">
+          <div class="label">右侧详情</div>
+          <h3 style="margin-top:8px;">祝衡</h3>
+          <p style="margin-top:8px;">档案修复师。当前作为选中人物，画布中高亮显示其直接关系。</p>
+          <div style="display:grid;gap:10px;margin-top:14px;">
+            <div style="padding:12px;border-radius:12px;background:#fff;border:1px solid #e5ded3;">
+              <strong>祝衡 → 城档馆</strong>
+              <p style="margin:6px 0 0;">隶属关系，受馆内规章约束。</p>
+            </div>
+            <div style="padding:12px;border-radius:12px;background:#fff;border:1px solid #e5ded3;">
+              <strong>祝衡 → 下城档案塔</strong>
+              <p style="margin:6px 0 0;">工作地点，长期驻留。</p>
+            </div>
+            <div style="padding:12px;border-radius:12px;background:#fff;border:1px solid #e5ded3;">
+              <strong>祝衡 → 失踪姐姐</strong>
+              <p style="margin:6px 0 0;">主线追查目标，当前为间接线索关联。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">第一版交互重点</div>
+    <div class="mockup-body">
+      <div class="options">
+        <div class="option">
+          <div class="letter">1</div>
+          <div class="content">
+            <h3>默认聚焦人物</h3>
+            <p>先让图谱更干净，降低首次使用的阅读压力。</p>
+          </div>
+        </div>
+        <div class="option">
+          <div class="letter">2</div>
+          <div class="content">
+            <h3>点击节点双联动</h3>
+            <p>画布高亮直接关系，右侧同步显示实体与关系详情。</p>
+          </div>
+        </div>
+        <div class="option">
+          <div class="letter">3</div>
+          <div class="content">
+            <h3>导出当前视图</h3>
+            <p>按当前筛选和选中状态导出 PNG，适合保存和分享。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
