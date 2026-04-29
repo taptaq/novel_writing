@@ -21,7 +21,7 @@ vi.mock("next/link", () => ({
   )
 }));
 
-const mockNovels: NovelSummary[] = [
+const realNovels: NovelSummary[] = [
   {
     id: "novel-1",
     slug: "mist-harbor",
@@ -57,11 +57,30 @@ const mockNovels: NovelSummary[] = [
   }
 ];
 
+const demoNovels: NovelSummary[] = [
+  {
+    id: "demo-1",
+    slug: "demo-novel",
+    title: "示例：北境余烬",
+    summary: "这是一个示例项目，用来带你熟悉从设定到写作的完整流程。",
+    genre: "历史奇幻",
+    status: "DRAFTING",
+    updatedAt: "2026-04-20T00:00:00.000Z",
+    chapterCount: 8,
+    wordCount: 41000
+  }
+];
+
+let mockResponse: { novels: NovelSummary[]; source: "database" | "demo" } = {
+  novels: realNovels,
+  source: "database"
+};
+
 vi.mock("@/lib/repositories/novels", () => ({
-  getNovelSummaries: vi.fn(async () => mockNovels)
+  getNovelSummariesWithSource: vi.fn(async () => mockResponse)
 }));
 
-const summaryFallback = "进入这个项目，继续整理结构、设定与章节内容。";
+const summaryFallback = "建议先回到项目总览，看看系统推荐你下一步先做什么。";
 
 type ParsedElement = {
   attributes: Record<string, string>;
@@ -118,7 +137,12 @@ function parseOpeningTags(markup: string, tagName: string): ParsedOpeningTag[] {
 }
 
 describe("NovelsPage", () => {
-  it("renders a concise project-entry novels index contract", async () => {
+  it("renders real projects as a continue-writing entry list", async () => {
+    mockResponse = {
+      novels: realNovels,
+      source: "database"
+    };
+
     const markup = renderToStaticMarkup(await NovelsPage());
     const pageText = normalizeWhitespace(stripTags(markup));
     const sections = parseOpeningTags(markup, "section");
@@ -126,7 +150,7 @@ describe("NovelsPage", () => {
     const anchors = parseElements(markup, "a");
     const projectCards = anchors.filter((anchor) => anchor.classes.includes("project-entry-card"));
     const copyWrappers = divs.filter((div) => div.classes.includes("project-entry-copy"));
-    const fallbackNovel = mockNovels[2];
+    const fallbackNovel = realNovels[2];
     const fallbackCard = projectCards.find((card) => card.attributes.href === `/novels/${fallbackNovel.slug}`);
 
     expect(sections.some((section) => section.classes.includes("panel") && section.classes.includes("library-panel"))).toBe(
@@ -134,16 +158,17 @@ describe("NovelsPage", () => {
     );
     expect(divs.some((div) => div.classes.includes("library-header"))).toBe(true);
     expect(divs.some((div) => div.classes.includes("library-list"))).toBe(true);
-    expect(pageText).toContain("作品库");
-    expect(pageText).toContain("选择一个项目继续推进");
-    expect(pageText).toContain("从最近的小说项目进入结构、设定和章节工作区。");
+    expect(pageText).toContain("第 1 步");
+    expect(pageText).toContain("先选一本，继续往下写");
+    expect(pageText).toContain("先回到你要推进的那一本，系统会告诉你下一步先做什么。");
+    expect(pageText).toContain("没有作品也没关系，直接建一本就行。");
     expect(
-      anchors.some((anchor) => anchor.attributes.href === "/novels/new" && anchor.text.includes("新建书籍"))
+      anchors.some((anchor) => anchor.attributes.href === "/novels/new" && anchor.text.includes("新建一本书"))
     ).toBe(true);
-    expect(projectCards).toHaveLength(mockNovels.length);
-    expect(copyWrappers).toHaveLength(mockNovels.length);
+    expect(projectCards).toHaveLength(realNovels.length);
+    expect(copyWrappers).toHaveLength(realNovels.length);
 
-    for (const novel of mockNovels) {
+    for (const novel of realNovels) {
       const expectedSummary = novel.summary ?? novel.premise ?? summaryFallback;
       const projectCard = projectCards.find(
         (anchor) => anchor.attributes.href === `/novels/${novel.slug}` && anchor.text.includes(novel.title)
@@ -157,11 +182,33 @@ describe("NovelsPage", () => {
       expect(projectCard?.text).toContain(`${novel.wordCount} 字`);
     }
 
-    expect(pageText).toContain(mockNovels[1].summary as string);
-    expect(pageText).not.toContain(mockNovels[1].premise as string);
+    expect(pageText).toContain(realNovels[1].summary as string);
+    expect(pageText).not.toContain(realNovels[1].premise as string);
     expect(pageText.match(new RegExp(summaryFallback, "g"))).toHaveLength(1);
     expect(fallbackCard?.text).toContain(summaryFallback);
 
-    expect(pageText).not.toContain("你的小说项目");
+    expect(pageText).not.toContain("选择一个项目继续推进");
+    expect(pageText).not.toContain("从最近的小说项目进入结构、设定和章节工作区。");
+  });
+
+  it("renders demo fallback with neutral copy instead of calling it the user's writing projects", async () => {
+    mockResponse = {
+      novels: demoNovels,
+      source: "demo"
+    };
+
+    const markup = renderToStaticMarkup(await NovelsPage());
+    const pageText = normalizeWhitespace(stripTags(markup));
+    const anchors = parseElements(markup, "a");
+    const projectCards = anchors.filter((anchor) => anchor.classes.includes("project-entry-card"));
+
+    expect(pageText).toContain("先看一个示例，熟悉完整流程");
+    expect(pageText).toContain("这里是演示用的作品，只是带你看流程。看完后再正式开书。");
+    expect(pageText).toContain("示例项目不会写进你的真实作品。");
+    expect(pageText).not.toContain("你还没有自己的项目");
+    expect(pageText).not.toContain("先选一本继续");
+    expect(projectCards).toHaveLength(demoNovels.length);
+    expect(projectCards[0]?.text).toContain(demoNovels[0].title);
+    expect(projectCards[0]?.attributes.href).toBe("/demo/demo-novel");
   });
 });

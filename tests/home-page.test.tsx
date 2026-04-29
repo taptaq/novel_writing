@@ -21,7 +21,7 @@ vi.mock("next/link", () => ({
   )
 }));
 
-const featuredNovels: NovelSummary[] = [
+const realNovels: NovelSummary[] = [
   {
     id: "novel-1",
     slug: "other-project",
@@ -29,18 +29,18 @@ const featuredNovels: NovelSummary[] = [
     premise: "一支调查队在迷雾海域追索失落航线。",
     genre: "奇幻冒险",
     status: "DRAFTING",
-    updatedAt: "2026-04-26T00:00:00.000Z",
+    updatedAt: "2026-04-24T00:00:00.000Z",
     chapterCount: 12,
     wordCount: 56000
   },
   {
     id: "novel-2",
-    slug: "demo-novel",
+    slug: "latest-real-project",
     title: "北境余烬",
     summary: "在冰原王朝崩解前，抄写员带着禁书穿越战线。",
     genre: "历史奇幻",
     status: "DRAFTING",
-    updatedAt: "2026-04-26T00:00:00.000Z",
+    updatedAt: "2026-04-27T00:00:00.000Z",
     chapterCount: 8,
     wordCount: 41000
   },
@@ -51,16 +51,33 @@ const featuredNovels: NovelSummary[] = [
     summary: "港城余火未熄，旧船员必须在下一次风暴前拼回失落航图。",
     genre: "海洋奇幻",
     status: "DRAFTING",
-    updatedAt: "2026-04-26T00:00:00.000Z",
+    updatedAt: "2026-04-25T00:00:00.000Z",
     chapterCount: 16,
     wordCount: 72000
   }
 ];
 
-let mockNovels: NovelSummary[] = featuredNovels;
+const demoNovels: NovelSummary[] = [
+  {
+    id: "demo-1",
+    slug: "demo-novel",
+    title: "示例：北境余烬",
+    summary: "这是一个示例项目，用来带你熟悉从设定到写作的完整流程。",
+    genre: "历史奇幻",
+    status: "DRAFTING",
+    updatedAt: "2026-04-20T00:00:00.000Z",
+    chapterCount: 8,
+    wordCount: 41000
+  }
+];
+
+let mockResponse: { novels: NovelSummary[]; source: "database" | "demo" } = {
+  novels: realNovels,
+  source: "database"
+};
 
 vi.mock("@/lib/repositories/novels", () => ({
-  getNovelSummaries: vi.fn(async () => mockNovels)
+  getNovelSummariesWithSource: vi.fn(async () => mockResponse)
 }));
 
 type ParsedAnchor = {
@@ -86,29 +103,34 @@ function parseAnchors(markup: string): ParsedAnchor[] {
 }
 
 describe("HomePage", () => {
-  it("uses the featured demo novel for the primary CTA when the explicit slug exists", async () => {
-    mockNovels = featuredNovels;
+  it("continues with the most recently updated real project instead of the first array item", async () => {
+    mockResponse = {
+      novels: realNovels,
+      source: "database"
+    };
 
     const markup = renderToStaticMarkup(await HomePage());
     const pageText = normalizeWhitespace(stripTags(markup));
     const anchors = parseAnchors(markup);
 
-    expect(pageText).toContain("AI 协作写作，不替作者做决定。");
-    expect(pageText).toContain("进入示例工作区");
-    expect(pageText).toContain("查看作品");
-    expect(pageText).toContain("结构");
-    expect(pageText).toContain("设定");
-    expect(pageText).toContain("写作");
-    expect(pageText).toContain("最近作品");
-    expect(pageText).toContain("结构建议");
-    expect(pageText).toContain("设定映射");
-    expect(pageText).toContain("上下文续写");
-    expect(pageText).toContain("风格护栏");
+    expect(pageText).toContain("第 1 步");
+    expect(pageText).toContain("写小说，不用一下子想清全部");
+    expect(pageText).toContain("你可以先看示例，先理解流程；也可以直接新建一本，边写边补。");
+    expect(pageText).toContain("继续我的书");
+    expect(pageText).toContain("直接新建一本");
+    expect(pageText).toContain("我的作品");
+    expect(pageText).not.toContain("能力标签");
+    expect(pageText).not.toContain("结构建议");
+    expect(pageText).not.toContain("设定映射");
+    expect(pageText).not.toContain("上下文续写");
+    expect(pageText).not.toContain("风格护栏");
 
-    const primaryCta = anchors.find((anchor) => anchor.text === "进入示例工作区");
-    expect(primaryCta?.href).toBe("/novels/tide-and-embers");
+    const primaryCta = anchors.find((anchor) => anchor.text === "继续我的书");
+    const secondaryCta = anchors.find((anchor) => anchor.text === "直接新建一本");
+    expect(primaryCta?.href).toBe("/novels/latest-real-project");
+    expect(secondaryCta?.href).toBe("/novels/new");
 
-    for (const novel of mockNovels) {
+    for (const novel of mockResponse.novels) {
       const expectedSummary = novel.summary ?? novel.premise;
       const projectLink = anchors.find(
         (anchor) => anchor.href === `/novels/${novel.slug}` && anchor.text.includes(novel.title)
@@ -127,19 +149,25 @@ describe("HomePage", () => {
     expect(pageText).not.toContain("写作中");
   });
 
-  it("falls back to a distinct recent-project CTA when the featured slug is absent", async () => {
-    mockNovels = featuredNovels.filter((novel) => novel.slug !== "tide-and-embers");
+  it("uses an honest demo CTA when the current list is only fallback demo data", async () => {
+    mockResponse = {
+      novels: demoNovels,
+      source: "demo"
+    };
 
     const markup = renderToStaticMarkup(await HomePage());
     const pageText = normalizeWhitespace(stripTags(markup));
     const anchors = parseAnchors(markup);
-    const primaryCta = anchors.find((anchor) => anchor.text === "继续最近项目");
-    const secondaryCta = anchors.find((anchor) => anchor.text === "查看作品");
+    const primaryCta = anchors.find((anchor) => anchor.text === "先看示例");
+    const secondaryCta = anchors.find((anchor) => anchor.text === "直接新建一本");
 
-    expect(pageText).toContain("继续最近项目");
-    expect(pageText).not.toContain("进入示例工作区");
-    expect(primaryCta?.href).toBe("/novels/other-project");
-    expect(secondaryCta?.href).toBe("/novels");
+    expect(pageText).toContain("先看示例");
+    expect(pageText).toContain("示例项目");
+    expect(pageText).toContain("你可以先看示例，先理解流程；也可以直接新建一本，边写边补。");
+    expect(pageText).toContain("这是演示流程，不会写进你的真实作品。");
+    expect(primaryCta?.href).toBe("/novels");
+    expect(secondaryCta?.href).toBe("/novels/new");
     expect(primaryCta?.href).not.toBe(secondaryCta?.href);
+    expect(anchors.some((anchor) => anchor.href === "/demo/demo-novel")).toBe(true);
   });
 });

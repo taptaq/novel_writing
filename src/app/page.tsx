@@ -1,109 +1,65 @@
 import Link from "next/link";
-import { getNovelSummaries } from "@/lib/repositories/novels";
+import { getNovelSummariesWithSource } from "@/lib/repositories/novels";
 import { getNovelLengthProfile } from "@/lib/novel-length";
 
-const statusCards = [
-  {
-    title: "结构",
-    value: "节拍清晰",
-    detail: "把大纲、章节目标和推进节奏放在同一视图里。"
-  },
-  {
-    title: "设定",
-    value: "映射完整",
-    detail: "人物、地点与规则在正文推进时始终保持可追踪。"
-  },
-  {
-    title: "写作",
-    value: "上下文在线",
-    detail: "把当前章节、上下文和语气护栏收进同一个操作面板。"
-  }
-];
-
-const capabilityTags = ["结构建议", "设定映射", "上下文续写", "风格护栏"];
-const featuredNovelSlug = "tide-and-embers";
-
 export default async function HomePage() {
-  const novels = await getNovelSummaries();
-  const featuredNovel = novels.find((novel) => novel.slug === featuredNovelSlug);
-  const fallbackNovel = novels[0];
-  const primaryCta = featuredNovel
+  const { novels, source } = await getNovelSummariesWithSource();
+  const recentNovel =
+    source === "database"
+      ? [...novels].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0]
+      : undefined;
+  const isDemoFallback = source === "demo";
+  const landingSummary = "你可以先看示例，先理解流程；也可以直接新建一本，边写边补。";
+  const primaryCta = recentNovel
     ? {
-        href: `/novels/${featuredNovel.slug}`,
-        label: "进入示例工作区"
+        href: `/novels/${recentNovel.slug}`,
+        label: "继续我的书"
       }
-    : fallbackNovel
-      ? {
-          href: `/novels/${fallbackNovel.slug}`,
-          label: "继续最近项目"
-        }
-      : {
-          href: "/novels",
-          label: "查看作品"
-        };
+    : {
+        href: "/novels",
+        label: "先看示例"
+      };
+  const sampleBasePath = isDemoFallback ? "/demo" : "/novels";
 
   return (
     <div className="page-stack landing-stack">
       <section className="landing-hero">
         <div className="landing-copy">
-          <p className="panel-eyebrow">Human Draft Studio</p>
-          <h1>AI 协作写作，不替作者做决定。</h1>
-          <p className="landing-summary">把结构、设定和章节推进收进同一个写作工作台。</p>
-          <div className="action-row">
+          <p className="panel-eyebrow">第 1 步</p>
+          <h1>写小说，不用一下子想清全部</h1>
+          <p className="landing-summary">{landingSummary}</p>
+          {isDemoFallback ? <p className="assist-meta">这是演示流程，不会写进你的真实作品。</p> : null}
+          <div className="action-row landing-action-row">
             <Link className="button-primary" href={primaryCta.href}>
               {primaryCta.label}
             </Link>
-            <Link className="button-secondary" href="/novels">
-              查看作品
+            <Link className="button-secondary" href="/novels/new">
+              直接新建一本
             </Link>
           </div>
-        </div>
-
-        <div className="landing-status-grid">
-          {statusCards.map((card) => (
-            <article key={card.title} className="landing-status-card">
-              <span className="landing-status-label">{card.title}</span>
-              <strong>{card.value}</strong>
-              <p>{card.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="landing-capabilities">
-        <div className="panel-header">
-          <div>
-            <p className="panel-eyebrow">能力标签</p>
-            <h2>把关键协作能力放在手边</h2>
-          </div>
-        </div>
-
-        <div className="stats-inline">
-          {capabilityTags.map((tag) => (
-            <span key={tag} className="landing-capability-tag">
-              {tag}
-            </span>
-          ))}
         </div>
       </section>
 
       <section className="landing-projects">
         <div className="panel-header">
           <div>
-            <p className="panel-eyebrow">最近作品</p>
-            <h2>继续推进你的项目</h2>
+            <p className="panel-eyebrow">{isDemoFallback ? "示例项目" : "我的作品"}</p>
+            <h2>{isDemoFallback ? "先看看别人怎么推进" : "回到你的书继续写"}</h2>
           </div>
         </div>
 
         <div className="landing-project-list">
           {novels.map((novel) => {
             const lengthProfile = getNovelLengthProfile(novel.lengthCategory);
+            const summary = isDemoFallback
+              ? novel.summary ?? novel.premise ?? "先打开这个示例项目，看看从设定到写作是怎么推进的。"
+              : novel.summary ?? novel.premise ?? "回到这本书，继续你上次写到的地方。";
 
             return (
-              <Link key={novel.id} href={`/novels/${novel.slug}`} className="project-entry-card">
+              <Link key={novel.id} href={`${sampleBasePath}/${novel.slug}`} className="project-entry-card">
                 <div className="project-entry-copy">
                   <h3>{novel.title}</h3>
-                  <p>{novel.summary ?? novel.premise ?? "继续完善这部作品的设定与章节推进。"}</p>
+                  <p>{summary}</p>
                 </div>
                 <div className="stats-inline">
                   <span className="stat-pill">{novel.genre ?? "未分类"}</span>

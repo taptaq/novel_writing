@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildAssistRequestBody,
   ChapterComposer,
@@ -40,6 +40,423 @@ function parseElements(markup: string, tagName: string): ParsedElement[] {
   }));
 }
 
+class FakeEvent {
+  type: string;
+  bubbles: boolean;
+  cancelBubble = false;
+  defaultPrevented = false;
+  target: FakeNode | null = null;
+  currentTarget: FakeNode | null = null;
+
+  constructor(type: string, init?: { bubbles?: boolean }) {
+    this.type = type;
+    this.bubbles = init?.bubbles ?? true;
+  }
+
+  stopPropagation() {
+    this.cancelBubble = true;
+  }
+
+  preventDefault() {
+    this.defaultPrevented = true;
+  }
+}
+
+class FakeNode {
+  nodeType: number;
+  ownerDocument: FakeDocument;
+  parentNode: FakeNode | null = null;
+  childNodes: FakeNode[] = [];
+  listeners = new Map<string, Array<(event: FakeEvent) => void>>();
+  nodeName = "";
+
+  constructor(nodeType: number, ownerDocument: FakeDocument) {
+    this.nodeType = nodeType;
+    this.ownerDocument = ownerDocument;
+  }
+
+  appendChild(child: FakeNode) {
+    if (child.parentNode) {
+      child.parentNode.removeChild(child);
+    }
+
+    child.parentNode = this;
+    this.childNodes.push(child);
+    return child;
+  }
+
+  removeChild(child: FakeNode) {
+    const index = this.childNodes.indexOf(child);
+    if (index >= 0) {
+      this.childNodes.splice(index, 1);
+      child.parentNode = null;
+    }
+
+    return child;
+  }
+
+  insertBefore(child: FakeNode, before: FakeNode | null) {
+    if (!before) {
+      return this.appendChild(child);
+    }
+
+    const index = this.childNodes.indexOf(before);
+    if (index < 0) {
+      return this.appendChild(child);
+    }
+
+    if (child.parentNode) {
+      child.parentNode.removeChild(child);
+    }
+
+    child.parentNode = this;
+    this.childNodes.splice(index, 0, child);
+    return child;
+  }
+
+  addEventListener(type: string, listener: (event: FakeEvent) => void) {
+    const list = this.listeners.get(type) ?? [];
+    list.push(listener);
+    this.listeners.set(type, list);
+  }
+
+  removeEventListener(type: string, listener: (event: FakeEvent) => void) {
+    const list = this.listeners.get(type) ?? [];
+    this.listeners.set(
+      type,
+      list.filter((item) => item !== listener)
+    );
+  }
+
+  dispatchEvent(event: FakeEvent) {
+    if (!event.target) {
+      event.target = this;
+    }
+
+    let current: FakeNode | null = this;
+    while (current) {
+      const listeners = current.listeners.get(event.type) ?? [];
+      for (const listener of listeners) {
+        event.currentTarget = current;
+        listener.call(current, event);
+        if (event.cancelBubble) {
+          return !event.defaultPrevented;
+        }
+      }
+
+      current = event.bubbles ? current.parentNode : null;
+    }
+
+    return !event.defaultPrevented;
+  }
+
+  get firstChild() {
+    return this.childNodes[0] ?? null;
+  }
+
+  get textContent() {
+    return this.childNodes.map((item) => item.textContent).join("");
+  }
+
+  set textContent(value: string) {
+    this.childNodes = [new FakeText(value, this.ownerDocument)];
+  }
+}
+
+class FakeText extends FakeNode {
+  nodeValue: string;
+
+  constructor(text: string, ownerDocument: FakeDocument) {
+    super(3, ownerDocument);
+    this.nodeName = "#text";
+    this.nodeValue = text;
+  }
+
+  override get textContent() {
+    return this.nodeValue;
+  }
+
+  override set textContent(value: string) {
+    this.nodeValue = value;
+  }
+}
+
+class FakeElement extends FakeNode {
+  tagName: string;
+  namespaceURI = "http://www.w3.org/1999/xhtml";
+  attributes: Record<string, string> = {};
+  style: Record<string, string> = {};
+  value = "";
+
+  constructor(tagName: string, ownerDocument: FakeDocument) {
+    super(1, ownerDocument);
+    this.tagName = tagName.toUpperCase();
+    this.nodeName = this.tagName;
+  }
+
+  setAttribute(name: string, value: string) {
+    this.attributes[name] = String(value);
+    if (name === "value") {
+      this.value = String(value);
+    }
+  }
+
+  removeAttribute(name: string) {
+    delete this.attributes[name];
+  }
+
+  getAttribute(name: string) {
+    return this.attributes[name] ?? null;
+  }
+
+  get options() {
+    return this.childNodes.filter((item): item is FakeElement => item instanceof FakeElement);
+  }
+
+  focus() {
+    this.ownerDocument.activeElement = this;
+  }
+}
+
+class FakeDocument extends FakeNode {
+  documentElement: FakeElement;
+  body: FakeElement;
+  defaultView: Window | null = null;
+  activeElement: FakeElement;
+
+  constructor() {
+    super(9, null as unknown as FakeDocument);
+    this.ownerDocument = this;
+    this.nodeName = "#document";
+    this.documentElement = new FakeElement("html", this);
+    this.body = new FakeElement("body", this);
+    this.activeElement = this.body;
+    this.appendChild(this.documentElement);
+    this.documentElement.appendChild(this.body);
+  }
+
+  createElement(tagName: string) {
+    return new FakeElement(tagName, this);
+  }
+
+  createTextNode(text: string) {
+    return new FakeText(text, this);
+  }
+}
+
+async function withMockWindow<T>(windowValue: Window | undefined, run: () => Promise<T> | T) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const globalWithOptionalWindow = globalThis as typeof globalThis & { window?: Window };
+
+  if (windowValue === undefined) {
+    Reflect.deleteProperty(globalWithOptionalWindow, "window");
+  } else {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      writable: true,
+      value: windowValue
+    });
+  }
+
+  try {
+    return await run();
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(globalThis, "window", originalDescriptor);
+    } else {
+      Reflect.deleteProperty(globalWithOptionalWindow, "window");
+    }
+  }
+}
+
+type InteractiveRender = {
+  container: FakeElement;
+  editor: FakeElement;
+  saveButton: FakeElement;
+  getText: () => string;
+  findButtonByText: (text: string) => FakeElement;
+  findLinkByText: (text: string) => FakeElement;
+};
+
+type MockStorage = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+};
+
+type InteractiveComposerOptions = {
+  data?: ChapterEditorData;
+  fetchImpl?: typeof fetch;
+  chapterSlug?: string;
+  localStorage?: MockStorage;
+  location?: {
+    assign: (url: string) => void;
+  };
+  novelSlug?: string;
+};
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject
+  };
+}
+
+function findElement(root: FakeNode, predicate: (node: FakeElement) => boolean): FakeElement | null {
+  if (root instanceof FakeElement && predicate(root)) {
+    return root;
+  }
+
+  for (const child of root.childNodes) {
+    const result = findElement(child, predicate);
+    if (result) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
+async function withInteractiveComposer<T>(
+  options: InteractiveComposerOptions,
+  run: (view: InteractiveRender) => Promise<T> | T
+) {
+  const data = options.data ?? chapterData;
+  const novelSlug = options.novelSlug ?? "mist-harbor";
+  const chapterSlug = options.chapterSlug ?? "bell-before-dawn";
+  const document = new FakeDocument();
+  const localStorage = options.localStorage ?? {
+    getItem: () => null,
+    setItem: () => undefined
+  };
+  const location = options.location ?? {
+    assign: () => undefined
+  };
+  const windowValue = {
+    document,
+    navigator: { userAgent: "node" },
+    localStorage,
+    location,
+    HTMLElement: FakeElement,
+    HTMLInputElement: FakeElement,
+    HTMLTextAreaElement: FakeElement,
+    HTMLIFrameElement: FakeElement,
+    SVGElement: FakeElement,
+    Element: FakeElement,
+    Node: FakeNode,
+    Text: FakeText,
+    Event: FakeEvent,
+    MouseEvent: FakeEvent
+  } as unknown as Window;
+
+  document.defaultView = windowValue;
+
+  return withMockWindow(windowValue, async () => {
+    const originalDocument = globalThis.document;
+    const originalNavigator = globalThis.navigator;
+    const originalHTMLElement = globalThis.HTMLElement;
+    const originalHTMLInputElement = globalThis.HTMLInputElement;
+    const originalHTMLTextAreaElement = globalThis.HTMLTextAreaElement;
+    const originalHTMLIFrameElement = globalThis.HTMLIFrameElement;
+    const originalSVGElement = globalThis.SVGElement;
+    const originalElement = globalThis.Element;
+    const originalNode = globalThis.Node;
+    const originalText = globalThis.Text;
+    const originalEvent = globalThis.Event;
+    const originalMouseEvent = globalThis.MouseEvent;
+    const originalFetch = globalThis.fetch;
+    const originalAct = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+
+    Object.assign(globalThis, {
+      document,
+      navigator: windowValue.navigator,
+      HTMLElement: FakeElement,
+      HTMLInputElement: FakeElement,
+      HTMLTextAreaElement: FakeElement,
+      HTMLIFrameElement: FakeElement,
+      SVGElement: FakeElement,
+      Element: FakeElement,
+      Node: FakeNode,
+      Text: FakeText,
+      Event: FakeEvent,
+      MouseEvent: FakeEvent,
+      fetch: options.fetchImpl,
+      IS_REACT_ACT_ENVIRONMENT: true
+    });
+
+    try {
+      const { createRoot } = await import("react-dom/client");
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container as unknown as Element);
+
+      await React.act(async () => {
+        root.render(<ChapterComposer novelSlug={novelSlug} chapterSlug={chapterSlug} data={data} />);
+      });
+
+      const editor = findElement(container, (node) => node.tagName === "TEXTAREA" && node.attributes.class === "editor-textarea");
+      const saveButton = findElement(container, (node) => node.tagName === "BUTTON" && node.textContent === "立即保存");
+
+      if (!editor || !saveButton) {
+        throw new Error("interactive test harness could not find the editor or save button");
+      }
+
+      const findButtonByText = (text: string) => {
+        const result = findElement(container, (node) => node.tagName === "BUTTON" && node.textContent === text);
+
+        if (!result) {
+          throw new Error(`button not found: ${text}`);
+        }
+
+        return result;
+      };
+
+      const findLinkByText = (text: string) => {
+        const result = findElement(container, (node) => node.tagName === "A" && node.textContent.includes(text));
+
+        if (!result) {
+          throw new Error(`link not found: ${text}`);
+        }
+
+        return result;
+      };
+
+      return await run({
+        container,
+        editor,
+        saveButton,
+        getText: () => normalizeWhitespace(container.textContent),
+        findButtonByText,
+        findLinkByText
+      } satisfies InteractiveRender);
+    } finally {
+      Object.assign(globalThis, {
+        document: originalDocument,
+        navigator: originalNavigator,
+        HTMLElement: originalHTMLElement,
+        HTMLInputElement: originalHTMLInputElement,
+        HTMLTextAreaElement: originalHTMLTextAreaElement,
+        HTMLIFrameElement: originalHTMLIFrameElement,
+        SVGElement: originalSVGElement,
+        Element: originalElement,
+        Node: originalNode,
+        Text: originalText,
+        Event: originalEvent,
+        MouseEvent: originalMouseEvent,
+        fetch: originalFetch,
+        IS_REACT_ACT_ENVIRONMENT: originalAct
+      });
+    }
+  });
+}
+
 const chapterData: ChapterEditorData = {
   novel: {
     id: "novel-1",
@@ -73,8 +490,44 @@ const chapterData: ChapterEditorData = {
     order: 3,
     status: "DRAFT",
     wordCount: 1800,
+    updatedAt: "2026-04-26T04:00:00.000Z",
     content: "海风卷进钟楼。"
   },
+  chapters: [
+    {
+      id: "chapter-1",
+      slug: "bell-before-dawn",
+      title: "第三声钟响前",
+      sceneGoal: "让主角意识到危险",
+      order: 3,
+      status: "DRAFT",
+      wordCount: 1800,
+      excerpt: "海风卷进钟楼。"
+    },
+    {
+      id: "chapter-2",
+      slug: "tide-mark",
+      title: "潮痕未退",
+      order: 4,
+      status: "DRAFT",
+      wordCount: 2100,
+      excerpt: "潮水退后，石阶上留下一道发白的印子。"
+    }
+  ],
+  versions: [
+    {
+      id: "version-2",
+      source: "manual",
+      createdAt: "2026-04-26T04:00:00.000Z",
+      wordCount: 1800
+    },
+    {
+      id: "version-1",
+      source: "autosave",
+      createdAt: "2026-04-26T03:30:00.000Z",
+      wordCount: 1720
+    }
+  ],
   entities: [
     {
       id: "entity-1",
@@ -106,6 +559,14 @@ const chapterData: ChapterEditorData = {
 };
 
 describe("ChapterComposer", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("shows the model selector with the default auto option visible", () => {
     const markup = renderToStaticMarkup(
       <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
@@ -159,11 +620,11 @@ describe("ChapterComposer", () => {
       <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
     );
     const buttons = parseElements(markup, "button");
-    const enabledButton = buttons.find((element) => element.text === "当前已应用文风资产");
-    const disabledButton = buttons.find((element) => element.text === "本次不使用文风约束");
+    const enabledButton = buttons.find((element) => element.text === "按本书语气来写");
+    const disabledButton = buttons.find((element) => element.text === "这次先不套用本书语气");
 
-    expect(normalizeWhitespace(stripTags(markup))).toContain("当前已应用文风资产");
-    expect(normalizeWhitespace(stripTags(markup))).toContain("本次不使用文风约束");
+    expect(normalizeWhitespace(stripTags(markup))).toContain("按本书语气来写");
+    expect(normalizeWhitespace(stripTags(markup))).toContain("这次先不套用本书语气");
     expect(enabledButton?.attributes["aria-pressed"]).toBe("true");
     expect(disabledButton?.attributes["aria-pressed"]).toBe("false");
   });
@@ -181,6 +642,789 @@ describe("ChapterComposer", () => {
     expect(text).toContain("匿名来信 -&gt; 信的真正收件人还没揭开。");
   });
 
+  it("shows a three-column writing workspace with chapter navigation and real top toolbar buttons", () => {
+    const markup = renderToStaticMarkup(
+      <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
+    );
+    const text = normalizeWhitespace(stripTags(markup));
+
+    expect(markup).toContain("chapter-editor-sidebar");
+    expect(markup).toContain("chapter-editor-main");
+    expect(markup).toContain("chapter-editor-aside");
+    expect(text).toContain("章节目录");
+    expect(text).toContain("新建章节");
+    expect(text).toContain("可以随时切换到别的章节查看或继续写。");
+    expect(text).toContain("收起章节栏");
+    expect(text).toContain("第三声钟响前");
+    expect(text).toContain("潮痕未退");
+    expect(text).toContain("立即保存");
+    expect(text).toContain("查看版本变化");
+    expect(text).toContain("查看相关设定");
+    expect(text).toContain("先写正文就行。卡住了，再用右边这些辅助功能。");
+    expect(text).toContain("先点一次右边按钮，这里就会出现候选稿。");
+  });
+
+  it("shows saved status by default", () => {
+    const markup = renderToStaticMarkup(
+      <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
+    );
+    const text = normalizeWhitespace(stripTags(markup));
+
+    expect(text).toContain("已保存");
+  });
+
+  it("shows 未保存改动 after editing, then autosaves and returns to 已保存", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          chapter: {
+            slug: "bell-before-dawn",
+            wordCount: 23,
+            updatedAt: "2026-04-29T10:00:00.000Z"
+          },
+          version: null
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      )
+    );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，钟索在掌心里勒出了一道红印。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+      expect(view.getText()).toContain("有未保存改动");
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await React.act(async () => {
+        vi.advanceTimersByTime(1200);
+      });
+      expect(view.getText()).toContain("已保存");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，钟索在掌心里勒出了一道红印。",
+          source: "autosave",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+    });
+  });
+
+  it("keeps newer dirty content dirty when an older autosave resolves later", async () => {
+    const firstSave = createDeferred<Response>();
+    const secondSave = createDeferred<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockImplementationOnce(() =>
+        secondSave.promise.then(
+          () =>
+            new Response(
+              JSON.stringify({
+                chapter: {
+                  slug: "bell-before-dawn",
+                  wordCount: 24,
+                  updatedAt: "2026-04-29T10:01:00.000Z"
+                },
+                version: null
+              }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json"
+                }
+              }
+            )
+        )
+      );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，旧钟还没响。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+      expect(view.getText()).toContain("有未保存改动");
+
+      await React.act(async () => {
+        vi.advanceTimersByTime(1200);
+      });
+
+      expect(view.getText()).toContain("保存中");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，旧钟还没响。",
+          source: "autosave",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，旧钟还没响，她先攥紧了绳结。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+
+      firstSave.resolve(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "bell-before-dawn",
+              wordCount: 16,
+              updatedAt: "2026-04-29T10:00:00.000Z"
+            },
+            version: null
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+      await React.act(async () => {
+        await firstSave.promise;
+      });
+      expect(view.getText()).toContain("有未保存改动");
+
+      await React.act(async () => {
+        vi.advanceTimersByTime(1200);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，旧钟还没响，她先攥紧了绳结。",
+          source: "autosave",
+          expectedUpdatedAt: "2026-04-29T10:00:00.000Z"
+        })
+      });
+
+      secondSave.resolve(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "bell-before-dawn",
+              wordCount: 24,
+              updatedAt: "2026-04-29T10:01:00.000Z"
+            },
+            version: null
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+      await React.act(async () => {
+        await secondSave.promise;
+      });
+      expect(view.getText()).toContain("已保存");
+    });
+  });
+
+  it("uses a client effect for remembered sidebar state so the first render stays SSR-safe", async () => {
+    const markup = await withMockWindow(
+      {
+        localStorage: {
+          getItem: () => "true",
+          setItem: () => undefined
+        }
+      } as unknown as Window,
+      () =>
+        renderToStaticMarkup(
+          <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
+        )
+    );
+    const text = normalizeWhitespace(stripTags(markup));
+
+    expect(markup).not.toContain("chapter-editor-sidebar-collapsed");
+    expect(text).toContain("收起章节栏");
+    expect(text).toContain("新建章节");
+    expect(text).toContain("章节目录");
+  });
+
+  it("reads remembered sidebar state after mount and collapses safely", async () => {
+    await withInteractiveComposer(
+      {
+        localStorage: {
+          getItem: () => "true",
+          setItem: () => undefined
+        }
+      },
+      async (view) => {
+        expect(view.container.textContent).toContain("展开章节栏");
+        expect(view.container.textContent).not.toContain("新建章节");
+      }
+    );
+  });
+
+  it("calls manual save with source=manual and refreshes the saved status", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          chapter: {
+            slug: "bell-before-dawn",
+            wordCount: 27,
+            updatedAt: "2026-04-29T10:02:00.000Z"
+          },
+          version: {
+            id: "version-3",
+            source: "manual",
+            createdAt: "2026-04-29T10:02:00.000Z",
+            wordCount: 27
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      )
+    );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，她先把灯绳绕在腕上。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+      expect(view.getText()).toContain("有未保存改动");
+
+      await React.act(async () => {
+        view.saveButton.dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，她先把灯绳绕在腕上。",
+          source: "manual",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+      expect(view.getText()).toContain("已保存");
+    });
+  });
+
+  it("deduplicates rapid double clicks on manual save so only one manual PATCH is sent", async () => {
+    const firstSave = createDeferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(() => firstSave.promise);
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，她先把灯绳压在掌心里。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+
+      await React.act(async () => {
+        view.saveButton.dispatchEvent(new FakeEvent("click"));
+        view.saveButton.dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，她先把灯绳压在掌心里。",
+          source: "manual",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+
+      firstSave.resolve(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "bell-before-dawn",
+              wordCount: 18,
+              updatedAt: "2026-04-29T10:06:00.000Z"
+            },
+            version: {
+              id: "version-4",
+              source: "manual",
+              createdAt: "2026-04-29T10:06:00.000Z",
+              wordCount: 18
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+      await React.act(async () => {
+        await firstSave.promise;
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(view.getText()).toContain("已保存");
+    });
+  });
+
+  it("does not send another manual save when the draft already matches the latest saved content", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.saveButton.dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(view.getText()).toContain("已保存");
+    });
+  });
+
+  it("tries autosave before switching chapters and then navigates inside the writing flow", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          chapter: {
+            slug: "bell-before-dawn",
+            wordCount: 28,
+            updatedAt: "2026-04-29T10:03:00.000Z"
+          },
+          version: null
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      )
+    );
+
+    await withInteractiveComposer(
+      {
+        fetchImpl: fetchMock,
+        location: {
+          assign
+        }
+      },
+      async (view) => {
+        await React.act(async () => {
+          view.editor.value = "海风卷进钟楼，她先把灯绳绕在腕上，又侧耳听了听。";
+          view.editor.dispatchEvent(new FakeEvent("input"));
+        });
+
+        await React.act(async () => {
+          view.findLinkByText("潮痕未退").dispatchEvent(new FakeEvent("click"));
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenLastCalledWith("/api/novels/mist-harbor/chapters/bell-before-dawn", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            plainText: "海风卷进钟楼，她先把灯绳绕在腕上，又侧耳听了听。",
+            source: "autosave",
+            expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+          })
+        });
+        expect(assign).toHaveBeenCalledWith("/novels/mist-harbor/chapters/tide-mark");
+      }
+    );
+  });
+
+  it("ignores a second create click while a dirty draft is being autosaved for chapter creation", async () => {
+    const autosave = createDeferred<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(() => autosave.promise)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "chapter-5",
+              title: "第 5 章",
+              order: 5
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，她先把门栓扣紧。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+
+      await React.act(async () => {
+        view.findButtonByText("新建章节").dispatchEvent(new FakeEvent("click"));
+        view.findButtonByText("新建章节").dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，她先把门栓扣紧。",
+          source: "autosave",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+
+      autosave.resolve(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "bell-before-dawn",
+              wordCount: 19,
+              updatedAt: "2026-04-29T10:03:30.000Z"
+            },
+            version: null
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+      await React.act(async () => {
+        await autosave.promise;
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/novels/mist-harbor/chapters", {
+        method: "POST"
+      });
+    });
+  });
+
+  it("creates a new chapter and jumps to the new writing page", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "chapter-5",
+              title: "第 5 章",
+              order: 5
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+    await withInteractiveComposer(
+      {
+        fetchImpl: fetchMock,
+        location: {
+          assign
+        }
+      },
+      async (view) => {
+        await React.act(async () => {
+          view.findButtonByText("新建章节").dispatchEvent(new FakeEvent("click"));
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith("/api/novels/mist-harbor/chapters", {
+          method: "POST"
+        });
+        expect(assign).toHaveBeenCalledWith("/novels/mist-harbor/chapters/chapter-5");
+      }
+    );
+  });
+
+  it("keeps save and create clickable in demo mode, but explains why write actions are unavailable", async () => {
+    await withInteractiveComposer(
+      {
+        data: {
+          ...chapterData,
+          source: "demo"
+        }
+      },
+      async (view) => {
+        expect(view.getText()).toContain("当前是示例章节，可以先体验流程。");
+        expect(view.getText()).toContain("正式保存和新建章节，需要进入真实作品。");
+
+        await React.act(async () => {
+          view.saveButton.dispatchEvent(new FakeEvent("click"));
+          view.findButtonByText("新建章节").dispatchEvent(new FakeEvent("click"));
+        });
+
+        expect("disabled" in view.saveButton.attributes).toBe(false);
+        expect("disabled" in view.findButtonByText("新建章节").attributes).toBe(false);
+        expect(view.getText()).toContain("当前是演示章节，数据库恢复后才能正式保存。");
+        expect(view.getText()).toContain("当前是演示章节，数据库恢复后才能新建章节。");
+      }
+    );
+  });
+
+  it("shows a chapter-creation error without polluting save state, and autosave still works afterwards", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: "创建章节失败"
+          }),
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "bell-before-dawn",
+              wordCount: 26,
+              updatedAt: "2026-04-29T10:04:00.000Z"
+            },
+            version: null
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.findButtonByText("新建章节").dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(view.getText()).toContain("新建章节失败，请稍后再试。");
+      expect(view.getText()).not.toContain("保存失败");
+      expect(view.getText()).toContain("已保存");
+
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，她把灯绳又在手背上绕了一圈。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+
+      expect(view.getText()).toContain("有未保存改动");
+
+      await React.act(async () => {
+        vi.advanceTimersByTime(1200);
+      });
+
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，她把灯绳又在手背上绕了一圈。",
+          source: "autosave",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+      expect(view.getText()).toContain("已保存");
+      expect(view.getText()).not.toContain("保存失败");
+    });
+  });
+
+  it("keeps only the first chapter switch request while a dirty draft save is in flight", async () => {
+    const assign = vi.fn();
+    const autosave = createDeferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(() => autosave.promise);
+
+    await withInteractiveComposer(
+      {
+        fetchImpl: fetchMock,
+        location: {
+          assign
+        },
+        data: {
+          ...chapterData,
+          chapters: [
+            ...chapterData.chapters,
+            {
+              id: "chapter-3",
+              slug: "glass-hall",
+              title: "玻璃回廊",
+              order: 5,
+              status: "DRAFT",
+              wordCount: 2400,
+              excerpt: "走廊比雨声更先发出回音。"
+            }
+          ]
+        }
+      },
+      async (view) => {
+        await React.act(async () => {
+          view.editor.value = "海风卷进钟楼，她先听见了楼梯上的回音。";
+          view.editor.dispatchEvent(new FakeEvent("input"));
+        });
+
+        await React.act(async () => {
+          view.findLinkByText("潮痕未退").dispatchEvent(new FakeEvent("click"));
+          view.findLinkByText("玻璃回廊").dispatchEvent(new FakeEvent("click"));
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(assign).not.toHaveBeenCalled();
+
+        autosave.resolve(
+          new Response(
+            JSON.stringify({
+              chapter: {
+                slug: "bell-before-dawn",
+                wordCount: 21,
+                updatedAt: "2026-04-29T10:05:00.000Z"
+              },
+              version: null
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json"
+              }
+            }
+          )
+        );
+
+        await React.act(async () => {
+          await autosave.promise;
+        });
+
+        expect(assign).toHaveBeenCalledTimes(1);
+        expect(assign).toHaveBeenCalledWith("/novels/mist-harbor/chapters/tide-mark");
+      }
+    );
+  });
+
+  it("opens a lightweight diff dialog against the latest saved baseline", async () => {
+    await withInteractiveComposer({ fetchImpl: vi.fn() }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，她摸到钟索上的盐霜。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+
+      await React.act(async () => {
+        view.findButtonByText("查看版本变化").dispatchEvent(new FakeEvent("click"));
+      });
+
+      const text = view.getText();
+      expect(text).toContain("改动对比");
+      expect(text).toContain("最近保存内容");
+      expect(text).toContain("当前草稿");
+      expect(text).toContain("海风卷进钟楼。");
+      expect(text).toContain("海风卷进钟楼，她摸到钟索上的盐霜。");
+    });
+  });
+
+  it("explains the diff baseline in plain language when there is no manual version yet", async () => {
+    await withInteractiveComposer(
+      {
+        fetchImpl: vi.fn(),
+        data: {
+          ...chapterData,
+          versions: [
+            {
+              id: "version-1",
+              source: "autosave",
+              createdAt: "2026-04-26T03:30:00.000Z",
+              wordCount: 1720
+            }
+          ]
+        }
+      },
+      async (view) => {
+        await React.act(async () => {
+          view.findButtonByText("查看版本变化").dispatchEvent(new FakeEvent("click"));
+        });
+
+        expect(view.getText()).toContain("还没有手动保存版本");
+      }
+    );
+  });
+
+  it("opens a lightweight related-context dialog with人物、伏笔和相关大纲", async () => {
+    await withInteractiveComposer(
+      {
+        fetchImpl: vi.fn(),
+        data: {
+          ...chapterData,
+          relevantOutlines: [
+            {
+              id: "outline-1",
+              title: "钟楼里先听到第二声",
+              summary: "让危险比答案更早出现。",
+              depth: 1,
+              order: 1,
+              status: "ACTIVE",
+              chapterSlug: "bell-before-dawn"
+            }
+          ]
+        }
+      },
+      async (view) => {
+        await React.act(async () => {
+          view.findButtonByText("查看相关设定").dispatchEvent(new FakeEvent("click"));
+        });
+
+        const text = view.getText();
+        expect(text).toContain("查看相关设定");
+        expect(text).toContain("沈砚");
+        expect(text).toContain("匿名来信");
+        expect(text).toContain("钟楼里先听到第二声");
+      }
+    );
+  });
+
   it("shows a lightweight message instead of style toggle when no style profile is available", () => {
     const markup = renderToStaticMarkup(
       <ChapterComposer
@@ -191,15 +1435,15 @@ describe("ChapterComposer", () => {
     );
     const text = normalizeWhitespace(stripTags(markup));
 
-    expect(text).toContain("当前作品还没有可用文风资产");
-    expect(text).not.toContain("当前已应用文风资产");
-    expect(text).not.toContain("本次不使用文风约束");
+    expect(text).toContain("这本书还没有可用的文风参考");
+    expect(text).not.toContain("按本书语气来写");
+    expect(text).not.toContain("这次先不套用本书语气");
   });
 
   it("returns a mode-specific lightweight message when the current mode does not use style profile", () => {
     expect(getStyleProfileUiState("outline", chapterData.styleProfile)).toEqual({
       kind: "message",
-      message: "当前模式不使用文风资产"
+      message: "当前模式暂时不用文风参考"
     });
   });
 

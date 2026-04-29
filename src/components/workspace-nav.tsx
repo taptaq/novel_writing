@@ -7,45 +7,53 @@ import { useState, useTransition } from "react";
 interface WorkspaceNavProps {
   novelSlug: string;
   firstChapterSlug?: string;
+  basePath?: string;
 }
 
-export function WorkspaceNav({ novelSlug, firstChapterSlug }: WorkspaceNavProps) {
+export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels" }: WorkspaceNavProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const items = [
     {
-      href: `/novels/${novelSlug}`,
-      label: "总览"
+      href: `${basePath}/${novelSlug}`,
+      label: "总览",
+      title: "先看现在最该做什么"
     },
     {
-      href: `/novels/${novelSlug}/outline`,
-      label: "结构"
+      href: `${basePath}/${novelSlug}/outline`,
+      label: "结构",
+      title: "不知道后面怎么写时，先来这里"
     },
     {
-      href: `/novels/${novelSlug}/world`,
-      label: "设定"
+      href: `${basePath}/${novelSlug}/world`,
+      label: "设定",
+      title: "补人物、地点、关系都在这里"
     },
     {
-      href: `/novels/${novelSlug}/graph`,
-      label: "图谱"
+      href: `${basePath}/${novelSlug}/graph`,
+      label: "图谱",
+      title: "快速看清人物关系"
     },
     {
-      href: `/novels/${novelSlug}/style`,
-      label: "文风"
+      href: `${basePath}/${novelSlug}/style`,
+      label: "文风",
+      title: "让 AI 更贴近这本书的感觉"
     },
     {
-      href: `/novels/${novelSlug}/insights`,
-      label: "AI 策略"
+      href: `${basePath}/${novelSlug}/insights`,
+      label: "AI 策略",
+      title: "不知道怎么用 AI 更省事时看这里"
     },
     firstChapterSlug
       ? {
-          href: `/novels/${novelSlug}/chapters/${firstChapterSlug}`,
-          label: "写作"
+          href: `${basePath}/${novelSlug}/chapters/${firstChapterSlug}`,
+          label: "写作",
+          title: "直接开始写这一章"
         }
       : null
-  ].filter(Boolean) as Array<{ href: string; label: string }>;
+  ].filter(Boolean) as Array<{ href: string; label: string; title: string }>;
   const normalizedPathname = normalizePath(pathname);
 
   function navigateTo(href: string) {
@@ -67,7 +75,7 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug }: WorkspaceNavProps)
         const isWriting = item.label === "写作";
         const isActive =
           normalizedPathname === normalizedHref ||
-          (isWriting && normalizedPathname.startsWith(`/novels/${novelSlug}/chapters/`));
+          (isWriting && normalizedPathname.startsWith(`${basePath}/${novelSlug}/chapters/`));
         const isNavigating = isPending && pendingHref === item.href;
 
         return (
@@ -81,6 +89,7 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug }: WorkspaceNavProps)
               .filter(Boolean)
               .join(" ")}
             href={item.href}
+            title={item.title}
             onClick={(event) => {
               event.preventDefault();
               navigateTo(item.href);

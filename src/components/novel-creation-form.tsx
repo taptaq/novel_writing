@@ -43,6 +43,10 @@ type CreationFormState = {
 };
 
 type ParsedDraftApplyMode = "replace_all" | "fill_empty";
+type CreationMode = "quick" | "ai_parse";
+type NovelCreationFormProps = {
+  initialCreationMode?: CreationMode;
+};
 
 const MAX_CHARACTER_SEEDS = 3;
 const MIN_CHARACTER_SEEDS = 1;
@@ -95,6 +99,10 @@ export function createInitialParsedSetupDraft(): ParsedSetupDraft {
     missingFields: [],
     confidenceNotes: []
   };
+}
+
+export function canParseSetupSource(setupSourceText: string, setupSourceFileName: string): boolean {
+  return setupSourceText.trim().length > 0 || setupSourceFileName.trim().length > 0;
 }
 
 const initialFormState: CreationFormState = {
@@ -308,9 +316,13 @@ function readErrorMessage(payload: unknown) {
   return "创建作品失败，请稍后再试。";
 }
 
-export function NovelCreationForm() {
+export function NovelCreationForm({
+  initialCreationMode = "quick"
+}: NovelCreationFormProps = {}) {
   const router = useRouter();
   const [form, setForm] = useState(initialFormState);
+  const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
+  const [isExpansionOpen, setIsExpansionOpen] = useState(initialCreationMode === "ai_parse");
   const [setupSourceText, setSetupSourceText] = useState("");
   const [setupSourceFileName, setSetupSourceFileName] = useState("");
   const [parsedSetupDraft, setParsedSetupDraft] = useState<ParsedSetupDraft | null>(null);
@@ -406,6 +418,9 @@ export function NovelCreationForm() {
     const file = event.target.files?.[0];
 
     if (!file) {
+      if (setupSourceFileName) {
+        setSetupSourceText("");
+      }
       setSetupSourceFileName("");
       setParsedSetupDraft(null);
       return;
@@ -429,6 +444,11 @@ export function NovelCreationForm() {
   }
 
   async function handleSetupParse() {
+    if (!canParseSetupSource(setupSourceText, setupSourceFileName)) {
+      setError("先贴设定内容或上传文件，再开始解析。");
+      return;
+    }
+
     setError(null);
     setIsParsingSetup(true);
 
@@ -540,108 +560,174 @@ export function NovelCreationForm() {
 
   const lengthProfile = getNovelLengthProfile(form.lengthCategory);
   const lengthHints = getLengthFeatureHints(form.lengthCategory);
+  const canParse = canParseSetupSource(setupSourceText, setupSourceFileName);
 
   return (
     <form className="creation-form" onSubmit={handleSubmit}>
+      <div className="note-box">
+        <p>先填最关键的信息就能开始写，其他都可以后面补。</p>
+      </div>
+
       <section className="creation-section">
         <div className="creation-section-heading">
-          <h2>AI 解析设定说明</h2>
-          <p>支持粘贴文本或上传设定文件，先生成回填草稿，再由你确认应用。</p>
+          <h2>第 1 步 / 导入你的想法</h2>
+          <p>你可以自己直接填，也可以先让 AI 帮你读设定。</p>
         </div>
-
-        <label className="field">
-          <span className="field-label">设定原文</span>
-          <textarea
-            className="form-textarea"
-            value={setupSourceText}
-            onChange={(event) => {
-              setSetupSourceText(event.target.value);
-              setParsedSetupDraft(null);
-            }}
-            placeholder="粘贴故事设定、人物介绍、世界观说明等内容，解析后会先生成预览草稿。"
-          />
-        </label>
 
         <div className="creation-grid creation-grid-2">
-          <label className="field">
-            <span className="field-label">上传设定文件</span>
-            <input
-              type="file"
-              className="text-input"
-              accept=".txt,.md,.docx,.pdf"
-              onChange={handleSetupFileChange}
-            />
+          <label className="seed-card">
+            <div className="seed-card-header">
+              <strong>快速新建</strong>
+              <input
+                type="radio"
+                name="creation-mode"
+                checked={creationMode === "quick"}
+                onChange={() => {
+                  setCreationMode("quick");
+                  setIsExpansionOpen(false);
+                }}
+              />
+            </div>
+            <p>自己直接填核心信息，马上开始，不等 AI 解析。</p>
           </label>
 
-          <div className="field">
-            <span className="field-label">当前来源</span>
-            <div className="note-box">
-              <p>{setupSourceFileName || "未上传文件，当前将使用上方粘贴文本。"}</p>
+          <label className="seed-card">
+            <div className="seed-card-header">
+              <strong>AI 解析设定创建</strong>
+              <input
+                type="radio"
+                name="creation-mode"
+                checked={creationMode === "ai_parse"}
+                onChange={() => {
+                  setCreationMode("ai_parse");
+                  setIsExpansionOpen(true);
+                }}
+              />
             </div>
-          </div>
+            <p>把设定贴进来或传文件，让 AI 帮你先读设定，再回填表单。</p>
+          </label>
         </div>
 
-        <div className="creation-section-heading">
-          <button
-            type="button"
-            className="button-primary"
-            onClick={handleSetupParse}
-            disabled={isParsingSetup}
-          >
-            {isParsingSetup ? "解析中..." : "开始解析"}
-          </button>
-        </div>
-
-        <article className="seed-card">
-          <div className="seed-card-header">
-            <strong>解析预览</strong>
+        {creationMode === "quick" ? (
+          <div className="note-box">
+            <p className="field-label">当前方式</p>
+            <p>你现在走的是快速新建，直接往下填就可以。</p>
           </div>
-
-          <div className="creation-grid creation-grid-2">
-            <div className="note-box">
-              <p className="field-label">一句话 premise</p>
-              <p>{parsedSetupDraft?.premise?.trim() || "暂无 premise，解析后会先在这里预览。"}</p>
+        ) : (
+          <article className="seed-card">
+            <div className="creation-section-heading">
+              <div>
+                <h3>AI 帮你先读设定</h3>
+                <p>把设定贴进来或传文件，先出一版回填草稿，再由你决定用哪些。</p>
+              </div>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={handleSetupParse}
+                disabled={isParsingSetup || !canParse}
+              >
+                {isParsingSetup ? "解析中..." : "开始解析"}
+              </button>
             </div>
 
-            <div className="note-box">
-              <p className="field-label">人物草稿</p>
-              <p>
-                {parsedSetupDraft && parsedSetupDraft.characterSeeds.length > 0
-                  ? parsedSetupDraft.characterSeeds
-                      .slice(0, MAX_CHARACTER_SEEDS)
-                      .map((item) => item.name)
-                      .filter(Boolean)
-                      .join(" / ")
-                  : "暂无人物种子，解析后会显示可回填的人物摘要。"}
-              </p>
-            </div>
-          </div>
+            {!canParse ? (
+              <div className="note-box">
+                <p className="field-label">开始前</p>
+                <p>先贴设定内容或上传文件，再开始解析。</p>
+              </div>
+            ) : null}
 
-          <div className="tag-list">
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => handleApplyParsedSetup("replace_all")}
-              disabled={!parsedSetupDraft}
-            >
-              应用全部到表单
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => handleApplyParsedSetup("fill_empty")}
-              disabled={!parsedSetupDraft}
-            >
-              只填空白项
-            </button>
-          </div>
-        </article>
+            <label className="field">
+              <span className="field-label">设定原文</span>
+              <textarea
+                className="form-textarea"
+                value={setupSourceText}
+                onChange={(event) => {
+                  setSetupSourceText(event.target.value);
+                  setParsedSetupDraft(null);
+                }}
+                placeholder="粘贴故事设定、人物介绍、世界观说明等内容，解析后会先生成预览草稿。"
+              />
+            </label>
+
+            <div className="creation-grid creation-grid-2">
+              <label className="field">
+                <span className="field-label">上传设定文件</span>
+                <input
+                  type="file"
+                  className="text-input"
+                  accept=".txt,.md,.docx,.pdf"
+                  onChange={handleSetupFileChange}
+                />
+              </label>
+
+              <div className="field">
+                <span className="field-label">当前来源</span>
+                <div className="note-box">
+                  <p>{setupSourceFileName || "未上传文件，当前将使用上方粘贴文本。"}</p>
+                </div>
+              </div>
+            </div>
+
+            <article className="seed-card">
+              <div className="seed-card-header">
+                <strong>解析预览</strong>
+              </div>
+
+              <div className="creation-grid creation-grid-2">
+                <div className="note-box">
+                  <p className="field-label">一句话 premise</p>
+                  <p>
+                    {parsedSetupDraft?.premise?.trim() || "暂无 premise，解析后会先在这里预览。"}
+                  </p>
+                </div>
+
+                <div className="note-box">
+                  <p className="field-label">人物草稿</p>
+                  <p>
+                    {parsedSetupDraft && parsedSetupDraft.characterSeeds.length > 0
+                      ? parsedSetupDraft.characterSeeds
+                          .slice(0, MAX_CHARACTER_SEEDS)
+                          .map((item) => item.name)
+                          .filter(Boolean)
+                          .join(" / ")
+                      : "暂无人物种子，解析后会显示可回填的人物摘要。"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="tag-list">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => handleApplyParsedSetup("replace_all")}
+                  disabled={!parsedSetupDraft}
+                >
+                  应用全部到表单
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => handleApplyParsedSetup("fill_empty")}
+                  disabled={!parsedSetupDraft}
+                >
+                  只填空白项
+                </button>
+              </div>
+            </article>
+          </article>
+        )}
       </section>
 
       <section className="creation-section">
         <div className="creation-section-heading">
-          <h2>基础信息</h2>
-          <p>先把立项核心补齐。</p>
+          <h2>第 2 步 / 先填这些就够了</h2>
+          <p>这一步填完，就能正式进入作品开始写。</p>
+        </div>
+
+        <div className="note-box">
+          <p className="field-label">核心信息</p>
+          <p>书名、类型、细分类型、目标受众、叙事视角、故事结构、篇幅类型、一句话故事核心。</p>
         </div>
 
         <div className="creation-grid creation-grid-3">
@@ -687,6 +773,7 @@ export function NovelCreationForm() {
 
           <label className="field">
             <span className="field-label">叙事视角</span>
+            <span className="field-helper">比如第一人称、第三人称。</span>
             <select
               className="text-input"
               value={form.narrativeView}
@@ -702,6 +789,7 @@ export function NovelCreationForm() {
 
           <label className="field">
             <span className="field-label">故事结构</span>
+            <span className="field-helper">比如三幕式、起承转合。不确定就先默认。</span>
             <select
               className="text-input"
               value={form.storyStructure}
@@ -717,6 +805,7 @@ export function NovelCreationForm() {
 
           <label className="field">
             <span className="field-label">篇幅类型</span>
+            <span className="field-helper">短篇、中篇、长篇会影响默认建议和后续功能重点。</span>
             <select
               className="text-input"
               value={form.lengthCategory}
@@ -732,7 +821,8 @@ export function NovelCreationForm() {
         </div>
 
         <label className="field">
-          <span className="field-label">一句话 premise</span>
+          <span className="field-label">一句话故事核心</span>
+          <span className="field-helper">用一句话说清：这本书主要在讲什么。</span>
           <textarea
             required
             className="form-textarea"
@@ -744,216 +834,257 @@ export function NovelCreationForm() {
 
       <section className="creation-section">
         <div className="creation-section-heading">
-          <h2>扩展策划</h2>
-          <p>可填，但很有用。</p>
+          <h2>第 3 步 / 这些现在不填也可以</h2>
+          <p>这些都是加分项，不影响你先把书建起来。</p>
         </div>
 
-        <article className="length-guidance-card">
-          <div>
-            <p className="field-label">默认建议</p>
-            <h3>{lengthProfile.label}</h3>
-            <p>{lengthProfile.description}</p>
-            <p>{lengthProfile.structureHint}</p>
-          </div>
-          <div className="tag-list">
-            <span className="tag">图谱 {lengthProfile.moduleMode.graph}</span>
-            <span className="tag">大纲 {lengthProfile.moduleMode.outline}</span>
-            <span className="tag">伏笔 {lengthProfile.moduleMode.foreshadow}</span>
-            <span className="tag">资料 {lengthProfile.moduleMode.research}</span>
-            <span className="tag">文风 {lengthProfile.moduleMode.style}</span>
-          </div>
-          <div className="note-box">
-            <p className="field-label">功能侧重</p>
-            <ul className="plain-list compact-list">
-              {lengthHints.map((hint) => (
-                <li key={hint}>{hint}</li>
-              ))}
-            </ul>
-          </div>
-        </article>
-
-        <div className="creation-grid creation-grid-2">
-          <label className="field">
-            <span className="field-label">预计总章数</span>
-            <input
-              inputMode="numeric"
-              className="text-input"
-              value={form.plannedChapterCount}
-              onChange={(event) => updateField("plannedChapterCount", event.target.value)}
-            />
-          </label>
-
-          <label className="field">
-            <span className="field-label">每章目标字数</span>
-            <input
-              inputMode="numeric"
-              className="text-input"
-              value={form.targetWordsPerChapter}
-              onChange={(event) => updateField("targetWordsPerChapter", event.target.value)}
-            />
-          </label>
+        <div className="note-box">
+          <p className="field-label">扩展内容</p>
+          <p>
+            篇幅建议、世界观 / 初始设定、语气 / 文风目标、人物种子、文风参考。现在先不填，也能直接创建。
+          </p>
         </div>
 
-        <div className="creation-grid creation-grid-2">
-          <label className="field">
-            <span className="field-label">世界观 / 初始设定</span>
-            <textarea
-              className="form-textarea form-textarea-compact"
-              value={form.worldSeed}
-              onChange={(event) => updateField("worldSeed", event.target.value)}
-            />
-          </label>
-
-          <label className="field">
-            <span className="field-label">语气 / 文风目标</span>
-            <textarea
-              className="form-textarea form-textarea-compact"
-              value={form.styleGoal}
-              onChange={(event) => updateField("styleGoal", event.target.value)}
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="creation-section">
-        <div className="creation-section-heading">
-          <div>
-            <h2>人物种子</h2>
-            <p>支持 1 到 3 个，留空会跳过。</p>
-          </div>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={handleAddCharacterSeed}
-            disabled={form.characterSeeds.length >= MAX_CHARACTER_SEEDS}
-          >
-            新增人物
-          </button>
-        </div>
-
-        <div className="creation-seed-grid">
-          {form.characterSeeds.map((character, index) => (
-            <article key={index} className="seed-card">
-              <div className="seed-card-header">
-                <strong>人物 {index + 1}</strong>
-                {form.characterSeeds.length > MIN_CHARACTER_SEEDS ? (
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => handleRemoveCharacterSeed(index)}
-                  >
-                    删除
-                  </button>
-                ) : null}
+        {!isExpansionOpen ? (
+          <article className="seed-card">
+            <div className="creation-section-heading">
+              <div>
+                <h3>先把书建起来也可以</h3>
+                <p>这一步先收起来也没关系，后面要补人物、文风和世界观时再展开。</p>
               </div>
-
-              <div className="creation-grid creation-grid-2">
-                <label className="field">
-                  <span className="field-label">姓名</span>
-                  <input
-                    className="text-input"
-                    value={character.name ?? ""}
-                    onChange={(event) => updateCharacterSeed(index, "name", event.target.value)}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">身份 / 角色定位</span>
-                  <input
-                    className="text-input"
-                    value={character.role ?? ""}
-                    onChange={(event) => updateCharacterSeed(index, "role", event.target.value)}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">所属势力</span>
-                  <input
-                    className="text-input"
-                    value={character.factionName ?? ""}
-                    onChange={(event) =>
-                      updateCharacterSeed(index, "factionName", event.target.value)
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">关键地点</span>
-                  <input
-                    className="text-input"
-                    value={character.locationName ?? ""}
-                    onChange={(event) =>
-                      updateCharacterSeed(index, "locationName", event.target.value)
-                    }
-                  />
-                </label>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setIsExpansionOpen(true)}
+              >
+                我想继续补细节
+              </button>
+            </div>
+          </article>
+        ) : (
+          <>
+            <article className="length-guidance-card">
+              <div>
+                <p className="field-label">篇幅建议</p>
+                <h3>{lengthProfile.label}</h3>
+                <p>{lengthProfile.description}</p>
+                <p>{lengthProfile.structureHint}</p>
               </div>
+              <div className="tag-list">
+                <span className="tag">图谱 {lengthProfile.moduleMode.graph}</span>
+                <span className="tag">大纲 {lengthProfile.moduleMode.outline}</span>
+                <span className="tag">伏笔 {lengthProfile.moduleMode.foreshadow}</span>
+                <span className="tag">资料 {lengthProfile.moduleMode.research}</span>
+                <span className="tag">文风 {lengthProfile.moduleMode.style}</span>
+              </div>
+              <div className="note-box">
+                <p className="field-label">功能侧重</p>
+                <ul className="plain-list compact-list">
+                  {lengthHints.map((hint) => (
+                    <li key={hint}>{hint}</li>
+                  ))}
+                </ul>
+              </div>
+            </article>
 
+            <div className="creation-section-heading">
+              <div>
+                <h3>继续补细节</h3>
+                <p>已经够用了的话，也可以先创建；这些内容后面还能继续加。</p>
+              </div>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setIsExpansionOpen(false)}
+              >
+                我先快速建书
+              </button>
+            </div>
+
+            <div className="creation-grid creation-grid-2">
               <label className="field">
-                <span className="field-label">简述</span>
-                <textarea
-                  className="form-textarea form-textarea-compact"
-                  value={character.summary ?? ""}
-                  onChange={(event) => updateCharacterSeed(index, "summary", event.target.value)}
+                <span className="field-label">预计总章数</span>
+                <input
+                  inputMode="numeric"
+                  className="text-input"
+                  value={form.plannedChapterCount}
+                  onChange={(event) => updateField("plannedChapterCount", event.target.value)}
                 />
               </label>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="creation-section creation-style-section">
-        <div className="creation-section-heading">
-          <div>
-            <h2>文风参考</h2>
-            <p>选填。现在先留空也可以，后续还能在书内继续投喂。</p>
-          </div>
-        </div>
-
-        <div className="creation-seed-grid">
-          {form.styleSamples.map((sample, index) => (
-            <article key={index} className="seed-card style-sample-card">
-              <div className="seed-card-header">
-                <strong>样文 {index + 1}</strong>
-              </div>
-
-              <div className="creation-grid creation-grid-2">
-                <label className="field">
-                  <span className="field-label">标题</span>
-                  <input
-                    className="text-input"
-                    value={sample.title}
-                    onChange={(event) => updateStyleSample(index, "title", event.target.value)}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">备注</span>
-                  <input
-                    className="text-input"
-                    value={sample.note}
-                    onChange={(event) => updateStyleSample(index, "note", event.target.value)}
-                  />
-                </label>
-              </div>
 
               <label className="field">
-                <span className="field-label">样文内容</span>
-                <textarea
-                  className="form-textarea form-textarea-compact"
-                  value={sample.content}
-                  onChange={(event) => updateStyleSample(index, "content", event.target.value)}
+                <span className="field-label">每章目标字数</span>
+                <input
+                  inputMode="numeric"
+                  className="text-input"
+                  value={form.targetWordsPerChapter}
+                  onChange={(event) => updateField("targetWordsPerChapter", event.target.value)}
                 />
               </label>
-            </article>
-          ))}
-        </div>
+            </div>
+
+            <div className="creation-grid creation-grid-2">
+              <label className="field">
+                <span className="field-label">世界观 / 初始设定</span>
+                <textarea
+                  className="form-textarea form-textarea-compact"
+                  value={form.worldSeed}
+                  onChange={(event) => updateField("worldSeed", event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span className="field-label">语气 / 文风目标</span>
+                <textarea
+                  className="form-textarea form-textarea-compact"
+                  value={form.styleGoal}
+                  onChange={(event) => updateField("styleGoal", event.target.value)}
+                />
+              </label>
+            </div>
+
+            <section className="creation-section">
+              <div className="creation-section-heading">
+                <div>
+                  <h2>人物种子</h2>
+                  <p>先填主角也可以，其他人物后面想到再补。</p>
+                </div>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={handleAddCharacterSeed}
+                  disabled={form.characterSeeds.length >= MAX_CHARACTER_SEEDS}
+                >
+                  新增人物
+                </button>
+              </div>
+
+              <div className="creation-seed-grid">
+                {form.characterSeeds.map((character, index) => (
+                  <article key={index} className="seed-card">
+                    <div className="seed-card-header">
+                      <strong>人物 {index + 1}</strong>
+                      {form.characterSeeds.length > MIN_CHARACTER_SEEDS ? (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => handleRemoveCharacterSeed(index)}
+                        >
+                          删除
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="creation-grid creation-grid-2">
+                      <label className="field">
+                        <span className="field-label">姓名</span>
+                        <input
+                          className="text-input"
+                          value={character.name ?? ""}
+                          onChange={(event) => updateCharacterSeed(index, "name", event.target.value)}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">身份 / 角色定位</span>
+                        <input
+                          className="text-input"
+                          value={character.role ?? ""}
+                          onChange={(event) => updateCharacterSeed(index, "role", event.target.value)}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">所属势力</span>
+                        <input
+                          className="text-input"
+                          value={character.factionName ?? ""}
+                          onChange={(event) =>
+                            updateCharacterSeed(index, "factionName", event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">关键地点</span>
+                        <input
+                          className="text-input"
+                          value={character.locationName ?? ""}
+                          onChange={(event) =>
+                            updateCharacterSeed(index, "locationName", event.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <label className="field">
+                      <span className="field-label">简述</span>
+                      <textarea
+                        className="form-textarea form-textarea-compact"
+                        value={character.summary ?? ""}
+                        onChange={(event) => updateCharacterSeed(index, "summary", event.target.value)}
+                      />
+                    </label>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="creation-section creation-style-section">
+              <div className="creation-section-heading">
+                <div>
+                  <h2>文风参考</h2>
+                  <p>这里是给 AI 学你想要的感觉。现在不填，后面也能继续补。</p>
+                </div>
+              </div>
+
+              <div className="creation-seed-grid">
+                {form.styleSamples.map((sample, index) => (
+                  <article key={index} className="seed-card style-sample-card">
+                    <div className="seed-card-header">
+                      <strong>样文 {index + 1}</strong>
+                    </div>
+
+                    <div className="creation-grid creation-grid-2">
+                      <label className="field">
+                        <span className="field-label">标题</span>
+                        <input
+                          className="text-input"
+                          value={sample.title}
+                          onChange={(event) => updateStyleSample(index, "title", event.target.value)}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">备注</span>
+                        <input
+                          className="text-input"
+                          value={sample.note}
+                          onChange={(event) => updateStyleSample(index, "note", event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="field">
+                      <span className="field-label">样文内容</span>
+                      <textarea
+                        className="form-textarea form-textarea-compact"
+                        value={sample.content}
+                        onChange={(event) => updateStyleSample(index, "content", event.target.value)}
+                      />
+                    </label>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
       </section>
 
       <div className="creation-actions">
-        <p className="creation-note">创建后会自动生成作品、人物、势力、地点的初始图谱。</p>
+        <p className="creation-note">先开始最重要，后面都能再改。</p>
         <button type="submit" className="button-primary" disabled={isSubmitting}>
-          {isSubmitting ? "创建中..." : "创建作品"}
+          {isSubmitting ? "创建中..." : "创建这本书"}
         </button>
       </div>
 

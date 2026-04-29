@@ -23,8 +23,9 @@ export function GraphFilterPanel({
 }: GraphFilterPanelProps) {
   return (
     <aside className="graph-sidebar panel">
-      <p className="panel-eyebrow">图谱筛选</p>
-      <h2>人物图谱</h2>
+      <p className="panel-eyebrow">关系图</p>
+      <h2>一眼看清人物关系</h2>
+      <p className="assist-meta">点一个人物，就能看他和谁有关。</p>
 
       <div className="graph-scope-group">
         <p className="field-label">显示范围</p>
@@ -42,10 +43,10 @@ export function GraphFilterPanel({
 
       <div className="graph-actions">
         <button type="button" className="button-primary" onClick={onExport}>
-          导出当前关系图 PNG
+          导出这张关系图
         </button>
         <button type="button" className="button-secondary" onClick={onReset}>
-          重置视图
+          回到初始视角
         </button>
       </div>
     </aside>

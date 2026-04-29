@@ -1,0 +1,96 @@
+<h2>写作页主结构怎么放更顺手？</h2>
+<p class="subtitle">重点看 5 个点放得顺不顺：章节目录、新建章节、自动保存、版本 Diff、设定链接</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>顶部章节条 + 当前三栏</h3>
+      <p>保留现在的正文区和右侧信息区，在正文上方补章节目录、新建章节和保存工具条。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>左侧章节栏 + 中间正文 + 右侧信息</h3>
+      <p>把章节目录固定在左侧，切章和新建都更直接，但页面会更像“编辑器”。</p>
+    </div>
+  </div>
+</div>
+
+<div class="split section" style="margin-top:20px;">
+  <div class="mockup">
+    <div class="mockup-header">A. 顶部章节条</div>
+    <div class="mockup-body">
+      <div class="mock-nav">章节 1 | 章节 2 | 章节 3 | + 新建章节</div>
+      <div style="display:grid;grid-template-columns:1.45fr 0.9fr;gap:16px;margin-top:12px;">
+        <div>
+          <div class="mock-content" style="min-height:340px;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px;">
+              <strong>正文编辑</strong>
+              <span>章节字数 / 状态</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+              <button class="mock-button">自动保存</button>
+              <button class="mock-button">版本 Diff</button>
+              <button class="mock-button">相关设定</button>
+            </div>
+            <div class="placeholder" style="min-height:220px;">正文内容区</div>
+          </div>
+        </div>
+        <div>
+          <div class="mock-content" style="min-height:340px;">本章目标 / 前文记忆 / 人物与伏笔 / AI 动作区</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">B. 左侧章节栏</div>
+    <div class="mockup-body">
+      <div style="display:grid;grid-template-columns:220px 1.2fr 0.9fr;gap:16px;">
+        <div class="mock-sidebar" style="min-height:340px;">
+          章节目录<br><br>
+          第 1 章<br>
+          第 2 章<br>
+          第 3 章<br><br>
+          <button class="mock-button">+ 新建章节</button>
+        </div>
+        <div class="mock-content" style="min-height:340px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px;">
+            <strong>正文编辑</strong>
+            <span>章节字数 / 状态</span>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <button class="mock-button">自动保存</button>
+            <button class="mock-button">版本 Diff</button>
+            <button class="mock-button">相关设定</button>
+          </div>
+          <div class="placeholder" style="min-height:220px;">正文内容区</div>
+        </div>
+        <div class="mock-content" style="min-height:340px;">本章目标 / 前文记忆 / 人物与伏笔 / AI 动作区</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>A 更适合</h4>
+      <ul>
+        <li>保留现在页面习惯，改动更轻</li>
+        <li>正文区域更宽</li>
+        <li>先把功能补齐，不会一下变太重</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>B 更适合</h4>
+      <ul>
+        <li>切章节最快</li>
+        <li>更像真正的长期写作编辑器</li>
+        <li>章节一多时会更稳定</li>
+      </ul>
+    </div>
+  </div>
+</div>

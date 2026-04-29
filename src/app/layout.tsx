@@ -25,22 +25,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
             <nav className="sidebar-nav">
               <Link href="/" className="sidebar-link">
-                首页
+                开始页
               </Link>
               <Link href="/novels" className="sidebar-link">
-                作品库
+                我的作品
               </Link>
-              <Link href="/novels/tide-and-embers" className="sidebar-link">
-                示例工作区
+              <Link href="/demo/tide-and-embers" className="sidebar-link">
+                先看示例
               </Link>
             </nav>
 
             <div className="sidebar-card">
-              <p className="panel-eyebrow">默认原则</p>
+              <p className="panel-eyebrow">新手先记这 3 句</p>
               <ul className="plain-list compact-list">
-                <li>AI 只给建议稿，不直接覆盖原文。</li>
+                <li>AI 只给建议稿，不会直接替你定稿。</li>
+                <li>先把书建起来，再慢慢补细节。</li>
                 <li>先保人设、逻辑和节奏，再谈修辞。</li>
-                <li>少形容词，多动作和细节。</li>
               </ul>
             </div>
           </aside>

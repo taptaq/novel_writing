@@ -9,7 +9,7 @@ export function GraphDetailPanel({ detail }: GraphDetailPanelProps) {
     return (
       <aside className="graph-detail panel">
         <p className="panel-eyebrow">关系详情</p>
-        <h2>当前图谱概览</h2>
+        <h2>先点一个人物看看关系</h2>
         <ul className="plain-list compact-list">
           <li>节点数 · {detail.counts.nodes}</li>
           <li>关系数 · {detail.counts.edges}</li>
@@ -22,7 +22,7 @@ export function GraphDetailPanel({ detail }: GraphDetailPanelProps) {
     <aside className="graph-detail panel">
       <p className="panel-eyebrow">关系详情</p>
       <h2>{detail.node.name}</h2>
-      <p>{detail.node.summary ?? "等待补充描述"}</p>
+      <p>{detail.node.summary ?? "这条人物卡还没补说明。"}</p>
       <ul className="plain-list compact-list">
         {detail.relations.map((item) => (
           <li key={item.edge.id}>

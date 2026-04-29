@@ -19,11 +19,12 @@ export default async function WorldPage({ params }: { params: { novelSlug: strin
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="panel-eyebrow">设定维护</p>
-            <h2>人物 / 势力 / 地点</h2>
+            <p className="panel-eyebrow">设定页</p>
+            <h2>人物、势力、地点都在这里</h2>
+            <p className="assist-meta">忘了谁是谁、谁跟谁有关，就回这里补和查。</p>
           </div>
           <Link href={`/novels/${workspace.novel.slug}/graph`} className="button-primary">
-            打开图谱
+            去看关系图
           </Link>
         </div>
       </section>

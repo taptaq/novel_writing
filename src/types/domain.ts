@@ -37,8 +37,17 @@ export interface ChapterSummary {
   order: number;
   status: ChapterStatus;
   wordCount: number;
+  updatedAt?: string;
   excerpt?: string;
   content?: string;
+}
+
+export interface ChapterVersionSummary {
+  id: string;
+  source: string;
+  note?: string;
+  createdAt: string;
+  wordCount: number;
 }
 
 export interface StoryEntitySummary {
@@ -78,10 +87,13 @@ export interface NovelWorkspace {
 }
 
 export interface ChapterEditorData {
+  source?: "database" | "demo";
   novel: NovelSummary;
   voiceRules: string[];
   styleProfile?: NovelStyleProfileSummary;
   chapter: ChapterSummary;
+  chapters: ChapterSummary[];
+  versions: ChapterVersionSummary[];
   entities: StoryEntitySummary[];
   relevantOutlines: OutlineSummary[];
   memory?: ChapterMemorySummary;

@@ -1,4 +1,5 @@
-import { EntityType, Prisma, RelationType } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import {
   getDemoChapterEditor,
   getDemoGraphData,
@@ -19,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { estimateWordCount, excerpt } from "@/lib/text/word-count";
 import type {
   ChapterEditorData,
+  ChapterVersionSummary,
   GraphEntityKind,
   GraphRelationKind,
   NovelGraphData,
@@ -28,6 +30,142 @@ import type {
   NovelSummary,
   NovelWorkspace
 } from "@/types/domain";
+
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+type PrismaEntityType = "CHARACTER" | "LOCATION" | "FACTION" | "ITEM" | "RULE" | "EVENT";
+type PrismaRelationType = "ALLY" | "ENEMY" | "FAMILY" | "MENTOR" | "SUBORDINATE" | "OTHER";
+
+type WordCountChapterRow = {
+  wordCount: number;
+};
+
+type NovelSummaryRow = {
+  id: string;
+  slug: string;
+  title: string;
+  premise: string | null;
+  summary: string | null;
+  genre: string | null;
+  tone: string | null;
+  lengthCategory: NovelSummary["lengthCategory"] | null;
+  status: NovelSummary["status"];
+  updatedAt: Date;
+  chapters: WordCountChapterRow[];
+};
+
+type WorkspaceChapterRow = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  sceneGoal: string | null;
+  plainText: string;
+  order: number;
+  status: "DRAFT" | "REVIEW" | "READY" | "PUBLISHED";
+  wordCount: number;
+  updatedAt: Date;
+};
+
+type ChapterEditorVersionRow = {
+  id: string;
+  source: string;
+  note: string | null;
+  plainText: string;
+  createdAt: Date;
+};
+
+type ChapterEditorChapterRow = WorkspaceChapterRow & {
+  versions: ChapterEditorVersionRow[];
+};
+
+type WorkspaceEntityRow = {
+  id: string;
+  type: PrismaEntityType;
+  name: string;
+  summary: string | null;
+  tags: string[];
+};
+
+type WorkspaceOutlineRow = {
+  id: string;
+  title: string;
+  summary: string | null;
+  depth: number;
+  order: number;
+  status: string;
+  chapter: { slug: string } | null;
+};
+
+type WorkspaceForeshadowRow = {
+  id: string;
+  hook: string;
+  plannedPayoff: string | null;
+  status: string;
+  firstMentionChapter: { slug: string } | null;
+  payoffChapter: { slug: string } | null;
+};
+
+type WorkspaceNovelRow = Omit<NovelSummaryRow, "chapters"> & {
+  voiceRules: JsonValue | null;
+  chapters: WorkspaceChapterRow[];
+  entities: WorkspaceEntityRow[];
+  outlines: WorkspaceOutlineRow[];
+  foreshadows: WorkspaceForeshadowRow[];
+};
+
+type GraphRelationRow = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  type: PrismaRelationType;
+  description: string | null;
+  remark: string | null;
+  note: string | null;
+};
+
+type GraphEntityRow = WorkspaceEntityRow & {
+  sourceRelations: GraphRelationRow[];
+};
+
+type GraphNovelRow = Omit<NovelSummaryRow, "chapters"> & {
+  chapters: WordCountChapterRow[];
+  entities: GraphEntityRow[];
+};
+
+type StyleProfileRow = {
+  id: string;
+  styleSummary: string | null;
+  styleRules: JsonValue | null;
+  avoidRules: JsonValue | null;
+  dialogueRules: JsonValue | null;
+  narrationRules: JsonValue | null;
+  rhythmRules: JsonValue | null;
+  imageryRules: JsonValue | null;
+  status: "EMPTY" | "READY" | "FAILED";
+  lastGeneratedAt: Date | null;
+};
+
+type StyleSampleRow = {
+  id: string;
+  title: string | null;
+  sourceType: "USER_SAMPLE" | "EXISTING_CHAPTER" | "MANUAL_PASTE";
+  content: string;
+  note: string | null;
+  isActive: boolean;
+  createdAt: Date;
+};
+
+type StyleWorkspaceNovelRow = Omit<NovelSummaryRow, "chapters"> & {
+  chapters: WordCountChapterRow[];
+  styleProfile: StyleProfileRow | null;
+  styleSamples: StyleSampleRow[];
+};
+
+type ChapterEditorNovelRow = Omit<WorkspaceNovelRow, "styleProfile" | "chapters"> & {
+  styleProfile: StyleProfileRow | null;
+  chapters: ChapterEditorChapterRow[];
+};
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -63,7 +201,22 @@ async function createUniqueNovelSlug(
   return candidate;
 }
 
-function mapEntityType(type: GraphEntityKind): EntityType {
+async function createUniqueChapterSlug(
+  baseSlug: string,
+  findBySlug: (slug: string) => Promise<{ id: string } | null>
+) {
+  let candidate = baseSlug;
+  let counter = 2;
+
+  while (await findBySlug(candidate)) {
+    candidate = `${baseSlug}-${counter}`;
+    counter += 1;
+  }
+
+  return candidate;
+}
+
+function mapEntityType(type: GraphEntityKind): PrismaEntityType {
   return type;
 }
 
@@ -71,7 +224,7 @@ function isGraphEntity<T extends { type: string }>(entity: T): entity is T & { t
   return entity.type === "CHARACTER" || entity.type === "FACTION" || entity.type === "LOCATION";
 }
 
-function mapRelationType(type: GraphRelationKind): RelationType {
+function mapRelationType(type: GraphRelationKind): PrismaRelationType {
   if (type === "MEMBER_OF" || type === "ROOTED_IN") {
     return "OTHER";
   }
@@ -110,12 +263,12 @@ function toNovelSummaryRecord(novel: {
 function toNovelStyleProfileSummary(profile: {
   id: string;
   styleSummary: string | null;
-  styleRules: Prisma.JsonValue | null;
-  avoidRules: Prisma.JsonValue | null;
-  dialogueRules: Prisma.JsonValue | null;
-  narrationRules: Prisma.JsonValue | null;
-  rhythmRules: Prisma.JsonValue | null;
-  imageryRules: Prisma.JsonValue | null;
+  styleRules: JsonValue | null;
+  avoidRules: JsonValue | null;
+  dialogueRules: JsonValue | null;
+  narrationRules: JsonValue | null;
+  rhythmRules: JsonValue | null;
+  imageryRules: JsonValue | null;
   status: "EMPTY" | "READY" | "FAILED";
   lastGeneratedAt: Date | null;
 }): NovelStyleProfileSummary {
@@ -167,13 +320,58 @@ function toStyleProfilePersistenceInput(input: NovelStyleProfileSummary) {
   };
 }
 
-export async function getNovelSummaries(): Promise<NovelSummary[]> {
+function toParagraphBlocks(text: string) {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph, index) => ({
+      id: `block-${index + 1}`,
+      type: "paragraph",
+      text: paragraph.trim()
+    }))
+    .filter((item) => item.text.length > 0);
+}
+
+export type NovelSummariesResult = {
+  novels: NovelSummary[];
+  source: "database" | "demo";
+};
+
+export type ChapterRepositoryErrorCode =
+  | "DATABASE_NOT_CONFIGURED"
+  | "NOVEL_NOT_FOUND"
+  | "CHAPTER_NOT_FOUND"
+  | "STALE_CHAPTER_DRAFT";
+
+export class ChapterRepositoryError extends Error {
+  code: ChapterRepositoryErrorCode;
+
+  constructor(code: ChapterRepositoryErrorCode) {
+    super(code);
+    this.name = "ChapterRepositoryError";
+    this.code = code;
+  }
+}
+
+export function isChapterRepositoryError(
+  error: unknown
+): error is ChapterRepositoryError {
+  return error instanceof ChapterRepositoryError;
+}
+
+function getDemoNovelSummariesResult(): NovelSummariesResult {
+  return {
+    novels: getDemoNovelSummaries(),
+    source: "demo"
+  };
+}
+
+export async function getNovelSummariesWithSource(): Promise<NovelSummariesResult> {
   if (!isDatabaseConfigured) {
-    return getDemoNovelSummaries();
+    return getDemoNovelSummariesResult();
   }
 
   try {
-    const novels = await prisma.novel.findMany({
+    const novels = (await prisma.novel.findMany({
       include: {
         chapters: {
           select: {
@@ -184,29 +382,36 @@ export async function getNovelSummaries(): Promise<NovelSummary[]> {
       orderBy: {
         updatedAt: "desc"
       }
-    });
+    })) as NovelSummaryRow[];
 
     if (novels.length === 0) {
-      return getDemoNovelSummaries();
+      return getDemoNovelSummariesResult();
     }
 
-    return novels.map((novel) => ({
-      id: novel.id,
-      slug: novel.slug,
-      title: novel.title,
-      premise: novel.premise ?? undefined,
-      summary: novel.summary ?? undefined,
-      genre: novel.genre ?? undefined,
-      tone: novel.tone ?? undefined,
-      lengthCategory: novel.lengthCategory ?? "MEDIUM",
-      status: novel.status,
-      updatedAt: novel.updatedAt.toISOString(),
-      chapterCount: novel.chapters.length,
-      wordCount: novel.chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0)
-    }));
+    return {
+      novels: novels.map((novel) => ({
+        id: novel.id,
+        slug: novel.slug,
+        title: novel.title,
+        premise: novel.premise ?? undefined,
+        summary: novel.summary ?? undefined,
+        genre: novel.genre ?? undefined,
+        tone: novel.tone ?? undefined,
+        lengthCategory: novel.lengthCategory ?? "MEDIUM",
+        status: novel.status,
+        updatedAt: novel.updatedAt.toISOString(),
+        chapterCount: novel.chapters.length,
+        wordCount: novel.chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0)
+      })),
+      source: "database"
+    };
   } catch {
-    return getDemoNovelSummaries();
+    return getDemoNovelSummariesResult();
   }
+}
+
+export async function getNovelSummaries(): Promise<NovelSummary[]> {
+  return (await getNovelSummariesWithSource()).novels;
 }
 
 export async function createNovelWithSeedData(raw: unknown): Promise<NovelSummary> {
@@ -219,7 +424,7 @@ export async function createNovelWithSeedData(raw: unknown): Promise<NovelSummar
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const createdNovel = await prisma.$transaction(async (tx) => {
+      const createdNovel = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const slug = await createUniqueNovelSlug(
           input.novel.title,
           async (candidate) =>
@@ -312,7 +517,7 @@ export async function createNovelWithSeedData(raw: unknown): Promise<NovelSummar
 
       return toNovelSummaryRecord(createdNovel);
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (error instanceof PrismaClientKnownRequestError && error.code === "P2002") {
         continue;
       }
 
@@ -329,7 +534,7 @@ export async function getNovelWorkspace(novelSlug: string): Promise<NovelWorkspa
   }
 
   try {
-    const novel = await prisma.novel.findUnique({
+    const novel = (await prisma.novel.findUnique({
       where: {
         slug: novelSlug
       },
@@ -379,10 +584,10 @@ export async function getNovelWorkspace(novelSlug: string): Promise<NovelWorkspa
           }
         }
       }
-    });
+    })) as WorkspaceNovelRow | null;
 
     if (!novel) {
-      return getDemoWorkspace(novelSlug);
+      return null;
     }
 
     return {
@@ -438,7 +643,7 @@ export async function getNovelWorkspace(novelSlug: string): Promise<NovelWorkspa
       }))
     };
   } catch {
-    return getDemoWorkspace(novelSlug);
+    return null;
   }
 }
 
@@ -448,7 +653,7 @@ export async function getNovelGraphData(novelSlug: string): Promise<NovelGraphDa
   }
 
   try {
-    const novel = await prisma.novel.findUnique({
+    const novel = (await prisma.novel.findUnique({
       where: {
         slug: novelSlug
       },
@@ -467,10 +672,10 @@ export async function getNovelGraphData(novelSlug: string): Promise<NovelGraphDa
           }
         }
       }
-    });
+    })) as GraphNovelRow | null;
 
     if (!novel) {
-      return getDemoGraphData(novelSlug);
+      return null;
     }
 
     const nodes = novel.entities
@@ -517,7 +722,7 @@ export async function getNovelGraphData(novelSlug: string): Promise<NovelGraphDa
       edges
     };
   } catch {
-    return getDemoGraphData(novelSlug);
+    return null;
   }
 }
 
@@ -528,7 +733,7 @@ export async function getNovelStyleWorkspace(
     throw new NovelStyleRepositoryError("DATABASE_NOT_CONFIGURED");
   }
 
-  const novel = await prisma.novel.findUnique({
+  const novel = (await prisma.novel.findUnique({
     where: {
       slug: novelSlug
     },
@@ -548,7 +753,7 @@ export async function getNovelStyleWorkspace(
         }
       }
     }
-  });
+  })) as StyleWorkspaceNovelRow | null;
 
   if (!novel) {
     return null;
@@ -585,14 +790,14 @@ export async function updateNovelStyleProfile(
   }
 
   const input = normalizeStyleProfile(novelStyleProfileSchema.parse(raw ?? {}));
-  const novel = await prisma.novel.findUnique({
+  const novel = (await prisma.novel.findUnique({
     where: {
       slug: novelSlug
     },
     select: {
       id: true
     }
-  });
+  })) as { id: string } | null;
 
   if (!novel) {
     throw new NovelStyleRepositoryError("NOVEL_NOT_FOUND");
@@ -623,14 +828,14 @@ export async function addNovelStyleSample(
   }
 
   const input = novelStyleSampleSchema.parse(raw);
-  const novel = await prisma.novel.findUnique({
+  const novel = (await prisma.novel.findUnique({
     where: {
       slug: novelSlug
     },
     select: {
       id: true
     }
-  });
+  })) as { id: string } | null;
 
   if (!novel) {
     throw new NovelStyleRepositoryError("NOVEL_NOT_FOUND");
@@ -649,6 +854,238 @@ export async function addNovelStyleSample(
   return toNovelStyleSampleSummary(sample);
 }
 
+export async function saveChapterDraft(
+  novelSlug: string,
+  chapterSlug: string,
+  input: {
+    plainText: string;
+    source: "manual" | "autosave";
+    note?: string;
+    expectedUpdatedAt?: string;
+  }
+): Promise<{
+  chapter: {
+    slug: string;
+    wordCount: number;
+    updatedAt: string;
+  };
+  version: {
+    id: string;
+    source: string;
+    createdAt: string;
+    wordCount: number;
+  } | null;
+}> {
+  if (!isDatabaseConfigured) {
+    throw new ChapterRepositoryError("DATABASE_NOT_CONFIGURED");
+  }
+
+  const rawText = input.plainText;
+  const wordCount = estimateWordCount(rawText.trim());
+  const content = toParagraphBlocks(rawText);
+
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const novel = (await tx.novel.findUnique({
+      where: {
+        slug: novelSlug
+      },
+      select: {
+        id: true
+      }
+    })) as { id: string } | null;
+
+    if (!novel) {
+      throw new ChapterRepositoryError("NOVEL_NOT_FOUND");
+    }
+
+    const chapter = (await tx.chapter.findFirst({
+      where: {
+        slug: chapterSlug,
+        novelId: novel.id
+      },
+      select: {
+        id: true,
+        slug: true,
+        updatedAt: true
+      }
+    })) as { id: string; slug: string; updatedAt: Date } | null;
+
+    if (!chapter) {
+      throw new ChapterRepositoryError("CHAPTER_NOT_FOUND");
+    }
+
+    const updateWhere: {
+      id: string;
+      updatedAt?: Date;
+    } = {
+      id: chapter.id
+    };
+
+    if (input.expectedUpdatedAt) {
+      updateWhere.updatedAt = new Date(input.expectedUpdatedAt);
+    }
+
+    const updateResult = await tx.chapter.updateMany({
+      where: {
+        ...updateWhere
+      },
+      data: {
+        plainText: rawText,
+        content,
+        wordCount
+      }
+    });
+
+    if (updateResult.count === 0) {
+      if (input.expectedUpdatedAt) {
+        throw new ChapterRepositoryError("STALE_CHAPTER_DRAFT");
+      }
+
+      throw new ChapterRepositoryError("CHAPTER_NOT_FOUND");
+    }
+
+    const updatedChapter = (await tx.chapter.findFirst({
+      where: {
+        id: chapter.id
+      },
+      select: {
+        slug: true,
+        wordCount: true,
+        updatedAt: true
+      }
+    })) as { slug: string; wordCount: number; updatedAt: Date } | null;
+
+    if (!updatedChapter) {
+      throw new ChapterRepositoryError("CHAPTER_NOT_FOUND");
+    }
+
+    let version: {
+      id: string;
+      source: string;
+      createdAt: Date;
+    } | null = null;
+
+    if (input.source === "manual") {
+      version = await tx.chapterVersion.create({
+        data: {
+          chapterId: chapter.id,
+          source: input.source,
+          note: input.note?.trim() || null,
+          content,
+          plainText: rawText
+        },
+        select: {
+          id: true,
+          source: true,
+          createdAt: true
+        }
+      });
+    }
+
+    return {
+      chapter: {
+        slug: updatedChapter.slug,
+        wordCount: updatedChapter.wordCount,
+        updatedAt: updatedChapter.updatedAt.toISOString()
+      },
+      version: version
+        ? {
+            id: version.id,
+            source: version.source,
+            createdAt: version.createdAt.toISOString(),
+            wordCount
+          }
+        : null
+    };
+  });
+}
+
+export async function createChapter(novelSlug: string): Promise<{
+  chapter: {
+    slug: string;
+    title: string;
+    order: number;
+  };
+}> {
+  if (!isDatabaseConfigured) {
+    throw new ChapterRepositoryError("DATABASE_NOT_CONFIGURED");
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const novel = (await tx.novel.findUnique({
+          where: {
+            slug: novelSlug
+          },
+          select: {
+            id: true
+          }
+        })) as { id: string } | null;
+
+        if (!novel) {
+          throw new ChapterRepositoryError("NOVEL_NOT_FOUND");
+        }
+
+        const lastChapter = (await tx.chapter.findFirst({
+          where: {
+            novelId: novel.id
+          },
+          orderBy: {
+            order: "desc"
+          },
+          select: {
+            order: true
+          }
+        })) as { order: number } | null;
+
+        const order = (lastChapter?.order ?? 0) + 1;
+        const title = `第 ${order} 章`;
+        const slug = await createUniqueChapterSlug(`chapter-${order}`, async (candidate) =>
+          tx.chapter.findFirst({
+            where: {
+              novelId: novel.id,
+              slug: candidate
+            },
+            select: {
+              id: true
+            }
+          })
+        );
+
+        const chapter = await tx.chapter.create({
+          data: {
+            novelId: novel.id,
+            slug,
+            title,
+            order,
+            content: [],
+            plainText: "",
+            wordCount: 0
+          },
+          select: {
+            slug: true,
+            title: true,
+            order: true
+          }
+        });
+
+        return {
+          chapter
+        };
+      });
+    } catch (error) {
+      if (error instanceof PrismaClientKnownRequestError && error.code === "P2002") {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Chapter create conflict.");
+}
+
 export async function rebuildNovelStyleProfile(
   novelSlug: string
 ): Promise<NovelStyleProfileSummary> {
@@ -656,7 +1093,7 @@ export async function rebuildNovelStyleProfile(
     throw new NovelStyleRepositoryError("DATABASE_NOT_CONFIGURED");
   }
 
-  const novel = await prisma.novel.findUnique({
+  const novel = (await prisma.novel.findUnique({
     where: {
       slug: novelSlug
     },
@@ -670,7 +1107,7 @@ export async function rebuildNovelStyleProfile(
         }
       }
     }
-  });
+  })) as { id: string; styleSamples: Array<{ content: string }> } | null;
 
   if (!novel) {
     throw new NovelStyleRepositoryError("NOVEL_NOT_FOUND");
@@ -708,7 +1145,7 @@ export async function getChapterEditorData(
   }
 
   try {
-    const novel = await prisma.novel.findUnique({
+    const novel = (await prisma.novel.findUnique({
       where: {
         slug: novelSlug
       },
@@ -716,6 +1153,14 @@ export async function getChapterEditorData(
         chapters: {
           orderBy: {
             order: "asc"
+          },
+          include: {
+            versions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 10
+            }
           }
         },
         entities: true,
@@ -752,12 +1197,12 @@ export async function getChapterEditorData(
           }
         }
       }
-    });
+    })) as ChapterEditorNovelRow | null;
 
     const chapter = novel?.chapters.find((item) => item.slug === chapterSlug);
 
     if (!novel || !chapter) {
-      return getDemoChapterEditor(novelSlug, chapterSlug);
+      return null;
     }
 
     return {
@@ -788,9 +1233,30 @@ export async function getChapterEditorData(
         order: chapter.order,
         status: chapter.status,
         wordCount: chapter.wordCount || estimateWordCount(chapter.plainText),
+        updatedAt: chapter.updatedAt.toISOString(),
         excerpt: excerpt(chapter.plainText),
         content: chapter.plainText
       },
+      chapters: novel.chapters.map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        title: item.title,
+        summary: item.summary ?? undefined,
+        sceneGoal: item.sceneGoal ?? undefined,
+        order: item.order,
+        status: item.status,
+        wordCount: item.wordCount || estimateWordCount(item.plainText),
+        excerpt: excerpt(item.plainText)
+      })),
+      versions: chapter.versions.map(
+        (version): ChapterVersionSummary => ({
+          id: version.id,
+          source: version.source,
+          note: version.note ?? undefined,
+          createdAt: version.createdAt.toISOString(),
+          wordCount: estimateWordCount(version.plainText)
+        })
+      ),
       entities: novel.entities.map((entity) => ({
         id: entity.id,
         type: entity.type,
@@ -858,6 +1324,6 @@ export async function getChapterEditorData(
       }))
     };
   } catch {
-    return getDemoChapterEditor(novelSlug, chapterSlug);
+    return null;
   }
 }

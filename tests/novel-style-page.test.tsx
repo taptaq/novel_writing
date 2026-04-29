@@ -95,17 +95,17 @@ describe("Novel style page contracts", () => {
       <NovelStyleManager novelSlug="glass-city" initialData={workspace} />
     );
 
-    expect(markup).toContain("文风资产");
-    expect(markup).toContain("当前生效规则");
-    expect(markup).toContain("投喂素材");
-    expect(markup).toContain("参考样文");
+    expect(markup).toContain("让 AI 更像这本书");
+    expect(markup).toContain("这本书现在的语气规则");
+    expect(markup).toContain("上传你认可的文字");
+    expect(markup).toContain("已收录样文");
     expect(markup).toContain("冷感、贴身、句子略短，解释晚于动作。");
     expect(markup).toContain("动作先于解释");
     expect(markup).toContain("冷雨开场");
     expect(markup).toContain("偏克制、停顿多");
-    expect(markup).toContain("保存规则");
-    expect(markup).toContain("重新提炼");
-    expect(markup).toContain("加入样文");
+    expect(markup).toContain("保存这些规则");
+    expect(markup).toContain("重新整理规则");
+    expect(markup).toContain("加入这段样文");
   });
 
   it("shows a 文风 entry in the workspace navigation", () => {
@@ -114,6 +114,8 @@ describe("Novel style page contracts", () => {
     );
 
     expect(markup).toContain('href="/novels/glass-city/style"');
+    expect(markup).toContain('title="让 AI 更贴近这本书的感觉"');
+    expect(markup).toContain('title="直接开始写这一章"');
     expect(markup).toContain('aria-current="page"');
     expect(markup).toContain(">文风<");
   });
@@ -128,36 +130,76 @@ describe("Novel style page contracts", () => {
     );
 
     expect(markup).toContain("文风资产");
-    expect(markup).toContain("管理参考样文、风格规则与去 AI 味偏好。");
+    expect(markup).toContain("想让 AI 更像这本书的语气，就来这里补样文和规则。");
     expect(markup).toContain('href="/novels/glass-city/style"');
     expect(markup).toContain("打开文风页");
+    expect(markup).toContain("还没补关键人物，先写主角、对手和关系就够了。");
+    expect(markup).toContain("还没顺后续走向，先列开头几章就够了。");
+    expect(markup).toContain("还没记伏笔，后面想到关键埋点再补也行。");
+  });
+
+  it("renders the recommended next-step hero card at the top of the novel overview page", async () => {
+    const markup = renderToStaticMarkup(
+      await NovelOverviewPage({
+        params: {
+          novelSlug: "glass-city"
+        }
+      })
+    );
+
+    expect(markup).toContain("你现在先做这一件就够了");
+    expect(markup).toContain("先补关键人物");
+    expect(markup).toContain("先把主角、对手和关键关系补齐，后面写章节才不容易空转。");
+    expect(markup).toContain('href="/novels/glass-city/world"');
+    expect(markup).toContain("去补人物");
+    expect(markup).toContain("不用一次把所有模块都做完，先推进当前最关键的一步。");
+    expect(markup.indexOf("你现在先做这一件就够了")).toBeLessThan(markup.indexOf("篇幅规划"));
   });
 
   it("renders the style reference section on the creation form", () => {
     const markup = renderToStaticMarkup(<NovelCreationForm />);
 
-    expect(markup).toContain("AI 解析设定说明");
+    expect(markup).toContain("第 1 步");
+    expect(markup).toContain("导入你的想法");
+    expect(markup).toContain("快速新建");
+    expect(markup).toContain("AI 解析设定创建");
+    expect(markup).toContain("你现在走的是快速新建，直接往下填就可以。");
+    expect(markup).toContain("先填最关键的信息就能开始写，其他都可以后面补。");
+    expect(markup).toContain("第 2 步 / 先填这些就够了");
+    expect(markup).toContain("一句话故事核心");
+    expect(markup).toContain("第 3 步 / 这些现在不填也可以");
+    expect(markup).toContain("我想继续补细节");
+    expect(markup).not.toContain("支持粘贴文本或上传设定文件");
+    expect(markup).not.toContain(">开始解析<");
+  });
+
+  it("renders the ai-parse path when the creation form starts in ai mode", () => {
+    const markup = renderToStaticMarkup(<NovelCreationForm initialCreationMode="ai_parse" />);
+
+    expect(markup).toContain("AI 帮你先读设定");
     expect(markup).toContain("开始解析");
     expect(markup).toContain("应用全部到表单");
     expect(markup).toContain("只填空白项");
-    expect(markup).toContain("基础信息");
     expect(markup).toContain("人物 1");
     expect(markup).not.toContain("人物 2");
     expect(markup).toContain("新增人物");
     expect(markup).toContain("文风参考");
-    expect(markup).toContain("选填。现在先留空也可以，后续还能在书内继续投喂。");
+    expect(markup).toContain("这里是给 AI 学你想要的感觉。现在不填，后面也能继续补。");
+    expect(markup).toContain("把设定贴进来或传文件，先出一版回填草稿，再由你决定用哪些。");
     expect(markup).toContain("样文 1");
     expect(markup).toContain("样文内容");
+    expect(markup).toMatch(/<button[^>]*disabled[^>]*>开始解析<\/button>/);
+    expect(markup).toContain("创建这本书");
   });
 
   it("renders length category controls and default planning hints on the creation form", () => {
-    const markup = renderToStaticMarkup(<NovelCreationForm />);
+    const markup = renderToStaticMarkup(<NovelCreationForm initialCreationMode="ai_parse" />);
 
     expect(markup).toContain("篇幅类型");
     expect(markup).toContain("短篇");
     expect(markup).toContain("中篇");
     expect(markup).toContain("长篇");
-    expect(markup).toContain("默认建议");
+    expect(markup).toContain("篇幅建议");
     expect(markup).toContain("功能侧重");
   });
 });

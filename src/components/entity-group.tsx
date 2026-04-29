@@ -36,7 +36,7 @@ export function EntityGroup({ title, items }: EntityGroupProps) {
             </article>
           ))
         ) : (
-          <p className="empty-state">还没有内容。</p>
+          <p className="empty-state">还没补内容，先写最关键的几条就够了。</p>
         )}
       </div>
     </section>

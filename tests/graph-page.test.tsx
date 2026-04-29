@@ -30,9 +30,9 @@ describe("GraphPage", () => {
   it("renders the graph workspace shell", async () => {
     const markup = renderToStaticMarkup(await GraphPage({ params: { novelSlug: "glass-citadel" } }));
 
-    expect(markup).toContain("人物图谱");
-    expect(markup).toContain("导出当前关系图 PNG");
-    expect(markup).toContain("当前图谱概览");
+    expect(markup).toContain("一眼看清人物关系");
+    expect(markup).toContain("导出这张关系图");
+    expect(markup).toContain("先点一个人物看看关系");
     expect(markup).toContain("关系图画布");
   });
 });

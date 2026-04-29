@@ -1,5 +1,6 @@
 import type {
   ChapterEditorData,
+  ChapterVersionSummary,
   GraphEntityKind,
   NovelGraphData,
   NovelSummary,
@@ -381,8 +382,19 @@ export function getDemoChapterEditor(novelSlug: string, chapterSlug: string): Ch
   }
 
   return {
+    source: "demo",
     novel: workspace.novel,
     voiceRules: workspace.voiceRules,
+    chapters: workspace.chapters,
+    versions: [
+      {
+        id: `version-${chapter.id}`,
+        source: "seed",
+        note: "Initial draft",
+        createdAt: demoMeta.generatedAt,
+        wordCount: estimateWordCount(chapter.plainText)
+      }
+    ] satisfies ChapterVersionSummary[],
     chapter: {
       id: chapter.id,
       slug: chapter.slug,
@@ -392,6 +404,7 @@ export function getDemoChapterEditor(novelSlug: string, chapterSlug: string): Ch
       order: chapter.order,
       status: chapter.status,
       wordCount: estimateWordCount(chapter.plainText),
+      updatedAt: demoMeta.generatedAt,
       excerpt: excerpt(chapter.plainText),
       content: chapter.plainText
     },

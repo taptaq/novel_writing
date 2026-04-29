@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addCharacterSeed,
   applyParsedSetupDraft,
+  canParseSetupSource,
   createEmptyCharacterSeed,
   createInitialCharacterSeeds,
   createInitialParsedSetupDraft,
@@ -43,6 +44,23 @@ describe("character seed helpers", () => {
 });
 
 describe("parsed setup helpers", () => {
+  it("only enables setup parsing when text or a file source exists", () => {
+    expect(canParseSetupSource("", "")).toBe(false);
+    expect(canParseSetupSource("  ", "")).toBe(false);
+    expect(canParseSetupSource("设定文本", "")).toBe(true);
+    expect(canParseSetupSource("", "setup.md")).toBe(true);
+  });
+
+  it("creates an empty parsed setup draft container by default", () => {
+    expect(createInitialParsedSetupDraft()).toEqual({
+      styleSamples: [],
+      characterSeeds: [],
+      guessedFields: [],
+      missingFields: [],
+      confidenceNotes: []
+    });
+  });
+
   it("replaces form fields and parsed character seeds when applying all", () => {
     const draft = createInitialParsedSetupDraft();
     draft.title = "雾港回声";

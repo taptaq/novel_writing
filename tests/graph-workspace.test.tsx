@@ -26,13 +26,13 @@ describe("GraphWorkspace", () => {
 
     expect(markup).toContain("显示范围");
     expect(markup).toContain("人物");
-    expect(markup).toContain("导出当前关系图 PNG");
+    expect(markup).toContain("导出这张关系图");
   });
 
   it("renders overview state before any node is selected", () => {
     const markup = renderToStaticMarkup(<GraphWorkspace graph={graph} />);
 
-    expect(markup).toContain("当前图谱概览");
+    expect(markup).toContain("先点一个人物看看关系");
     expect(markup).toContain("节点数");
   });
 
@@ -41,7 +41,7 @@ describe("GraphWorkspace", () => {
 
     expect(markup).toContain("人物 + 势力");
     expect(markup).toContain("人物 + 势力 + 地点");
-    expect(markup).toContain("重置视图");
+    expect(markup).toContain("回到初始视角");
     expect(markup).toContain("关系图画布");
   });
 

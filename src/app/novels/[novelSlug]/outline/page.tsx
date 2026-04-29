@@ -13,8 +13,10 @@ export default async function OutlinePage({ params }: { params: { novelSlug: str
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="panel-eyebrow">大纲节点</p>
-            <h2>故事结构树</h2>
+            <p className="panel-eyebrow">大纲页</p>
+            <h2>不知道后面怎么写时，就先看这里</h2>
+            <p className="assist-meta">把后面几章的大概走向顺一下，就不容易写着写着跑偏。</p>
+            <p className="assist-meta">这一段大概怎么发展，会落在下面这些节点里。</p>
           </div>
         </div>
 
@@ -37,8 +39,9 @@ export default async function OutlinePage({ params }: { params: { novelSlug: str
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="panel-eyebrow">伏笔追踪</p>
-            <h2>待回收清单</h2>
+            <p className="panel-eyebrow">伏笔页</p>
+            <h2>还没回收的线索</h2>
+            <p className="assist-meta">把后面还要回应的点记在这里，就不容易忘。</p>
           </div>
         </div>
 
