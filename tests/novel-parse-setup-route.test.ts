@@ -43,11 +43,25 @@ describe("POST /api/novels/parse-setup", () => {
         targetWordsPerChapter: "3000",
         worldSeed: "  盐雾旧港与钟楼区。  ",
         styleGoal: "  克制、冷感、细节推进。  ",
+        factionSeeds: [
+          { name: " 城档馆 ", summary: " 保管旧港档案的机构 " },
+          { name: " 港务署 " }
+        ],
+        locationSeeds: [
+          { name: " 北钟塔 ", summary: " 潮汐钟核心区 " },
+          { name: " 白雾码头 " }
+        ],
         characterSeeds: [
           { name: " 沈砚 ", role: " 修钟学徒 " },
           { name: " 林渡 " },
           { name: " 周棠 ", factionName: " 港务署 " },
+          { name: " 苏枕 ", locationName: " 北钟塔 " },
           { name: "   ", summary: "这条应被过滤" }
+        ],
+        relationSeeds: [
+          { sourceName: " 沈砚 ", targetName: " 城档馆 ", type: "MEMBER_OF", description: " 长期在馆内工作 " },
+          { sourceName: " 苏枕 ", targetName: " 北钟塔 ", type: "ROOTED_IN", description: " 负责守塔 " },
+          { sourceName: "   ", targetName: " 白雾码头 ", type: "OTHER", description: "无效" }
         ],
         guessedFields: [" targetAudience ", " plannedChapterCount "],
         missingFields: [" styleSamples "],
@@ -81,6 +95,26 @@ describe("POST /api/novels/parse-setup", () => {
         worldSeed: "盐雾旧港与钟楼区。",
         styleGoal: "克制、冷感、细节推进。",
         styleSamples: [],
+        factionSeeds: [
+          {
+            name: "城档馆",
+            summary: "保管旧港档案的机构"
+          },
+          {
+            name: "港务署",
+            summary: ""
+          }
+        ],
+        locationSeeds: [
+          {
+            name: "北钟塔",
+            summary: "潮汐钟核心区"
+          },
+          {
+            name: "白雾码头",
+            summary: ""
+          }
+        ],
         characterSeeds: [
           {
             name: "沈砚",
@@ -102,6 +136,31 @@ describe("POST /api/novels/parse-setup", () => {
             summary: "",
             factionName: "港务署",
             locationName: ""
+          },
+          {
+            name: "苏枕",
+            role: "",
+            summary: "",
+            factionName: "",
+            locationName: "北钟塔"
+          }
+        ],
+        relationSeeds: [
+          {
+            sourceName: "沈砚",
+            targetName: "城档馆",
+            type: "MEMBER_OF",
+            description: "长期在馆内工作",
+            remark: "",
+            note: ""
+          },
+          {
+            sourceName: "苏枕",
+            targetName: "北钟塔",
+            type: "ROOTED_IN",
+            description: "负责守塔",
+            remark: "",
+            note: ""
           }
         ],
         guessedFields: ["targetAudience", "plannedChapterCount"],

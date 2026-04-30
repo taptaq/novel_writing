@@ -50,6 +50,19 @@ export interface ChapterVersionSummary {
   wordCount: number;
 }
 
+export interface ChapterAuditRecordSummary {
+  id: string;
+  createdAt: string;
+  summary: string;
+  primaryTitle: string;
+  primaryText: string;
+  warnings: string[];
+  nextContext: string[];
+  resolvedProvider?: string;
+  resolvedModel?: string;
+  usedFallback?: boolean;
+}
+
 export interface StoryEntitySummary {
   id: string;
   type: EntityKind;
@@ -98,6 +111,7 @@ export interface ChapterEditorData {
   relevantOutlines: OutlineSummary[];
   memory?: ChapterMemorySummary;
   foreshadows: ForeshadowSummary[];
+  auditHistory: ChapterAuditRecordSummary[];
 }
 
 export interface ChapterMemorySummary {
@@ -152,6 +166,11 @@ export interface CharacterSeedInput {
   locationName?: string;
 }
 
+export interface GraphEntitySeedInput {
+  name: string;
+  summary?: string;
+}
+
 export interface ParsedSetupCharacterSeed {
   name: string;
   role?: string;
@@ -174,7 +193,10 @@ export interface ParsedSetupDraft {
   worldSeed?: string;
   styleGoal?: string;
   styleSamples: StyleSampleInput[];
+  factionSeeds: GraphEntitySeedInput[];
+  locationSeeds: GraphEntitySeedInput[];
   characterSeeds: ParsedSetupCharacterSeed[];
+  relationSeeds: RelationSeedInput[];
   guessedFields: string[];
   missingFields: string[];
   confidenceNotes: string[];
@@ -203,6 +225,8 @@ export interface NovelCreationInput {
   worldSeed?: string;
   styleGoal?: string;
   styleSamples: StyleSampleInput[];
+  factionSeeds: GraphEntitySeedInput[];
+  locationSeeds: GraphEntitySeedInput[];
   characterSeeds: CharacterSeedInput[];
   relationSeeds: RelationSeedInput[];
 }

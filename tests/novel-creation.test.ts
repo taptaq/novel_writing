@@ -19,6 +19,18 @@ const payload = {
   targetWordsPerChapter: 3200,
   worldSeed: "玻璃城的记忆会在夜间折射成第二现实。",
   styleGoal: "克制、冷感、观察细。",
+  factionSeeds: [
+    {
+      name: "镜庭议会",
+      summary: "掌握玻璃城上层秩序的议会组织。"
+    }
+  ],
+  locationSeeds: [
+    {
+      name: "回声长廊",
+      summary: "会重复旧日对白的走廊。"
+    }
+  ],
   characterSeeds: [
     {
       name: "祝衡",
@@ -68,6 +80,8 @@ describe("novelCreationSchema", () => {
 
     expect(parsed.title).toBe("玻璃城遗闻");
     expect(parsed.lengthCategory).toBe("LONG");
+    expect(parsed.factionSeeds[0].name).toBe("镜庭议会");
+    expect(parsed.locationSeeds[0].name).toBe("回声长廊");
     expect(parsed.relationSeeds[0].remark).toBe("主线绑定");
     expect(parsed.relationSeeds[0].note).toBe("第一阶段图谱备注");
   });
@@ -130,6 +144,25 @@ describe("novelCreationSchema", () => {
     expect(parsed.characterSeeds[0].factionName).toBe("城档馆");
     expect(parsed.characterSeeds[1].locationName).toBe("下城档案塔");
   });
+
+  it("accepts more than 3 character seeds during novel creation", () => {
+    const parsed = novelCreationSchema.parse({
+      ...payload,
+      characterSeeds: [
+        ...payload.characterSeeds,
+        {
+          name: "季明",
+          role: "修钟助手"
+        },
+        {
+          name: "谢危",
+          role: "调查员"
+        }
+      ]
+    });
+
+    expect(parsed.characterSeeds).toHaveLength(4);
+  });
 });
 
 describe("buildInitialGraphSeed", () => {
@@ -145,8 +178,10 @@ describe("buildInitialGraphSeed", () => {
       new Set([
         "CHARACTER:祝衡",
         "CHARACTER:林晞",
+        "FACTION:镜庭议会",
         "FACTION:城档馆",
         "FACTION:夜测队",
+        "LOCATION:回声长廊",
         "LOCATION:下城档案塔",
         "LOCATION:镜坡"
       ])
@@ -181,6 +216,25 @@ describe("buildInitialGraphSeed", () => {
     expect(
       seed.entities.filter((item) => item.type === "LOCATION" && item.name === "下城档案塔")
     ).toHaveLength(1);
+  });
+
+  it("keeps standalone faction and location seeds from parsed setup", () => {
+    const seed = buildInitialGraphSeed(payload);
+
+    expect(seed.entities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "FACTION",
+          name: "镜庭议会",
+          summary: "掌握玻璃城上层秩序的议会组织。"
+        }),
+        expect.objectContaining({
+          type: "LOCATION",
+          name: "回声长廊",
+          summary: "会重复旧日对白的走廊。"
+        })
+      ])
+    );
   });
 
   it("drops explicit relations whose endpoints do not resolve to created entities", () => {
@@ -233,8 +287,14 @@ describe("buildInitialGraphSeed", () => {
         item.sourceName === "祝衡" && item.targetName === "城档馆" && item.type === "MEMBER_OF"
     );
 
-    expect(seed.entities).toHaveLength(3);
-    expect(seed.entities.map((item) => item.name)).toEqual(["祝衡", "城档馆", "下城档案塔"]);
+    expect(seed.entities).toHaveLength(5);
+    expect(seed.entities.map((item) => item.name)).toEqual([
+      "祝衡",
+      "镜庭议会",
+      "城档馆",
+      "回声长廊",
+      "下城档案塔"
+    ]);
     expect(seed.entities[0].summary).toBe("档案修复师");
     expect(membershipRelation).toMatchObject({
       sourceName: "祝衡",
@@ -282,7 +342,9 @@ describe("buildInitialGraphSeed", () => {
 
     expect(seed.entities.map((item) => `${item.type}:${item.name}`)).toEqual([
       "CHARACTER:祝衡",
+      "FACTION:镜庭议会",
       "FACTION:城档馆",
+      "LOCATION:回声长廊",
       "LOCATION:下城档案塔"
     ]);
     expect(

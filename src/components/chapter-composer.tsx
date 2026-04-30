@@ -127,6 +127,19 @@ export function buildAssistRequestBody(input: AssistRequestBody) {
   return input;
 }
 
+export function buildChapterAuditInstruction(chapterGoal: string) {
+  return [
+    "请按章节审核台的方式检查这一章。",
+    `本章目标：${chapterGoal}`,
+    "重点只看这四项：",
+    "1. 前后连贯：和前面章节是否接得上，信息、情绪、动机有没有跳。",
+    "2. 人物和设定：人物反应、人设、地点、规则、势力关系有没有冲突。",
+    "3. 伏笔和剧情线：有没有提前说破、忘记回收，或者推进顺序不顺。",
+    "4. AI 味和句子：有没有太整齐、太解释、太像机器在总结。",
+    "输出时先给整体判断，再给高风险问题和可优化方向。"
+  ].join("\n");
+}
+
 function getSaveStateLabel(isDirty: boolean, saveRequestState: SaveRequestState) {
   if (saveRequestState === "saving") {
     return "保存中";
@@ -190,6 +203,22 @@ function buildDiffParagraphs(previousText: string, currentText: string) {
   })).filter((item) => item.before !== item.after);
 }
 
+function formatAuditRecordTime(value: string) {
+  return value.slice(0, 16).replace("T", " ");
+}
+
+function buildAuditRecordMeta(record: ChapterEditorData["auditHistory"][number]) {
+  if (!record.resolvedModel) {
+    return "";
+  }
+
+  if (record.usedFallback) {
+    return `模型：${record.resolvedModel} · 已走兜底`;
+  }
+
+  return `模型：${record.resolvedModel}`;
+}
+
 export function ChapterComposer({
   novelSlug,
   chapterSlug,
@@ -215,6 +244,11 @@ export function ChapterComposer({
   const [result, setResult] = useState<WritingAssistResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [auditResult, setAuditResult] = useState<WritingAssistResponse | null>(null);
+  const [isAuditRunning, setIsAuditRunning] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [lastAuditedDraft, setLastAuditedDraft] = useState<string | null>(null);
+  const [auditHistory, setAuditHistory] = useState(data.auditHistory);
   const [isPending, startTransition] = useTransition();
   const deferredDraft = useDeferredValue(draft);
   const draftRef = useRef(draft);
@@ -235,6 +269,7 @@ export function ChapterComposer({
   const latestManualVersion = data.versions.find((item) => item.source === "manual");
   const diffParagraphs = buildDiffParagraphs(lastSavedDraft, draft);
   const diffWordDelta = estimateWordCount(draft) - estimateWordCount(lastSavedDraft);
+  const isAuditStale = auditResult !== null && lastAuditedDraft !== draft;
 
   useEffect(() => {
     draftRef.current = draft;
@@ -492,6 +527,68 @@ export function ChapterComposer({
     }
   }
 
+  async function runChapterAudit() {
+    setIsAuditRunning(true);
+    setAuditError(null);
+
+    try {
+      if (!isDemoFallback && isDirty) {
+        const didSave = await persistDraft("manual");
+        if (!didSave) {
+          setIsAuditRunning(false);
+          return;
+        }
+      }
+
+      const response = await fetch("/api/ai/assist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(
+          buildAssistRequestBody({
+            novelSlug,
+            chapterSlug,
+            mode: "audit",
+            modelSelection,
+            disableStyleProfile,
+            instruction: buildChapterAuditInstruction(chapterGoal),
+            currentText: draftRef.current
+          })
+        )
+      });
+
+      if (!response.ok) {
+        throw new Error("章节审核失败，请检查环境变量或后端日志。");
+      }
+
+      const payload = (await response.json()) as WritingAssistResponse;
+      startTransition(() => {
+        setAuditResult(payload);
+        setLastAuditedDraft(draftRef.current);
+        setAuditHistory((current) => [
+          {
+            id: `local-audit-${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            summary: payload.summary,
+            primaryTitle: payload.primary.title,
+            primaryText: payload.primary.text,
+            warnings: payload.warnings,
+            nextContext: payload.nextContext,
+            resolvedProvider: payload.meta.resolvedProvider,
+            resolvedModel: payload.meta.resolvedModel,
+            usedFallback: payload.meta.usedFallback
+          },
+          ...current
+        ].slice(0, 5));
+      });
+    } catch (issue) {
+      setAuditError(issue instanceof Error ? issue.message : "章节审核失败。");
+    } finally {
+      setIsAuditRunning(false);
+    }
+  }
+
   function applySuggestion(text: string, strategy: "append" | "replace") {
     startTransition(() => {
       if (strategy === "replace") {
@@ -600,6 +697,9 @@ export function ChapterComposer({
             <button className="button-primary" type="button" onClick={handleManualSave}>
               立即保存
             </button>
+            <button className="button-secondary" type="button" onClick={() => void runChapterAudit()}>
+              {isAuditRunning ? "审核中..." : "保存并审核本章"}
+            </button>
             <button className="button-secondary" type="button" onClick={() => setActiveDialog("diff")}>
               查看版本变化
             </button>
@@ -654,6 +754,99 @@ export function ChapterComposer({
           <div className="note-box">
             <p>{chapterGoal}</p>
           </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-eyebrow">写完一章就来这里</p>
+              <h2>章节审核台</h2>
+            </div>
+          </div>
+
+          <div className="note-box">
+            <p>这次会重点检查四件事，帮你快速看出这一章还缺什么。</p>
+            <ul className="plain-list compact-list">
+              <li>前后连贯</li>
+              <li>人物和设定</li>
+              <li>伏笔和剧情线</li>
+              <li>AI 味和句子</li>
+            </ul>
+          </div>
+
+          <button className="button-primary" type="button" onClick={() => void runChapterAudit()} disabled={isAuditRunning}>
+            {isAuditRunning ? "审核中..." : "保存并审核本章"}
+          </button>
+
+          {auditError ? <p className="error-text">{auditError}</p> : null}
+
+          {auditResult ? (
+            <div className="stack-column">
+              {isAuditStale ? (
+                <div className="note-box">
+                  <p className="field-label">提示</p>
+                  <p>当前草稿在上次审核后已经改过，建议再审一次。</p>
+                </div>
+              ) : null}
+
+              <div className="note-box">
+                <p className="field-label">章节审核结果</p>
+                <p>{auditResult.summary}</p>
+              </div>
+
+              <div className="note-box">
+                <p className="field-label">{auditResult.primary.title}</p>
+                <pre className="suggestion-body">{auditResult.primary.text}</pre>
+              </div>
+
+              {auditResult.warnings.length > 0 ? (
+                <div className="note-box">
+                  <p className="field-label">高风险问题</p>
+                  <ul className="plain-list compact-list">
+                    {auditResult.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {auditResult.nextContext.length > 0 ? (
+                <div className="note-box">
+                  <p className="field-label">可优化方向</p>
+                  <ul className="plain-list compact-list">
+                    {auditResult.nextContext.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="empty-state">写完这一章后，点一次按钮，这里就会给你一份审稿提醒。</p>
+          )}
+
+          {auditHistory.length > 0 ? (
+            <div className="stack-column">
+              <p className="field-label">最近审核记录</p>
+              {auditHistory.map((record) => {
+                const metaLine = buildAuditRecordMeta(record);
+
+                return (
+                  <div key={record.id} className="note-box">
+                    <p className="assist-meta">{formatAuditRecordTime(record.createdAt)}</p>
+                    <p>{record.summary}</p>
+                    {record.warnings.length > 0 ? (
+                      <p className="assist-meta">重点问题：{record.warnings.slice(0, 2).join("；")}</p>
+                    ) : null}
+                    {record.nextContext.length > 0 ? (
+                      <p className="assist-meta">可继续改：{record.nextContext.slice(0, 2).join("；")}</p>
+                    ) : null}
+                    {metaLine ? <p className="assist-meta">{metaLine}</p> : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </section>
 
         {data.memory ? (

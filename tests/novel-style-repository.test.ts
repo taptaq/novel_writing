@@ -33,6 +33,13 @@ const mocks = vi.hoisted(() => {
   return {
     prisma: {
       $transaction: vi.fn(),
+      aiSuggestion: {
+        create: vi.fn(),
+        findMany: vi.fn()
+      },
+      chapter: {
+        findFirst: vi.fn()
+      },
       novel: {
         findUnique: vi.fn()
       },
@@ -61,6 +68,7 @@ import {
   createNovelWithSeedData,
   getChapterEditorData,
   getNovelStyleWorkspace,
+  saveChapterAuditRecord,
   saveChapterDraft,
   updateNovelStyleProfile
 } from "@/lib/repositories/novels";
@@ -468,6 +476,27 @@ describe("novel style repository", () => {
       outlines: [],
       foreshadows: []
     });
+    mocks.prisma.aiSuggestion.findMany.mockResolvedValue([
+      {
+        id: "audit-2",
+        suggestedText: "前半段张力够，但后半段解释偏多。",
+        rationale: {
+          summary: "这一章整体顺，但结尾解释多了一点。",
+          primary: {
+            title: "本章总体判断",
+            text: "前半段张力够，但后半段解释偏多。"
+          },
+          warnings: ["老齐这段话说得太满。"],
+          nextContext: ["把老齐的解释压短。"],
+          meta: {
+            resolvedProvider: "dmx",
+            resolvedModel: "mimo-v2.5-free",
+            usedFallback: false
+          }
+        },
+        createdAt: new Date("2026-04-29T09:10:00.000Z")
+      }
+    ]);
 
     const result = await getChapterEditorData("glass-city", "cold-rain");
 
@@ -525,6 +554,17 @@ describe("novel style repository", () => {
       }
     });
     expect(result).toMatchObject({
+      auditHistory: [
+        expect.objectContaining({
+          id: "audit-2",
+          summary: "这一章整体顺，但结尾解释多了一点。",
+          primaryTitle: "本章总体判断",
+          primaryText: "前半段张力够，但后半段解释偏多。",
+          warnings: ["老齐这段话说得太满。"],
+          nextContext: ["把老齐的解释压短。"],
+          resolvedModel: "mimo-v2.5-free"
+        })
+      ],
       chapters: [
         expect.objectContaining({
           slug: "cold-rain",
@@ -549,6 +589,17 @@ describe("novel style repository", () => {
           wordCount: expect.any(Number)
         })
       ]
+    });
+    expect(mocks.prisma.aiSuggestion.findMany).toHaveBeenCalledWith({
+      where: {
+        novelId: "novel-1",
+        chapterId: "chapter-1",
+        type: "AUDIT"
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      take: 5
     });
   });
 
@@ -758,6 +809,101 @@ describe("novel style repository", () => {
         wordCount: true,
         updatedAt: true
       }
+    });
+  });
+
+  it("saves chapter audit records into ai suggestions", async () => {
+    mocks.prisma.chapter.findFirst.mockResolvedValue({
+      id: "chapter-1",
+      novelId: "novel-1"
+    });
+    mocks.prisma.aiSuggestion.create.mockResolvedValue({
+      id: "audit-3",
+      suggestedText: "整体没跑偏，但结尾解释偏多。",
+      rationale: {
+        summary: "整体没跑偏，但结尾解释偏多。",
+        primary: {
+          title: "本章总体判断",
+          text: "整体没跑偏，但结尾解释偏多。"
+        },
+        warnings: ["结尾那段解释收一收。"],
+        nextContext: ["把最后一段拆成动作和停顿。"],
+        meta: {
+          resolvedProvider: "dmx",
+          resolvedModel: "mimo-v2.5-free",
+          usedFallback: false
+        }
+      },
+      createdAt: new Date("2026-04-29T10:20:00.000Z")
+    });
+
+    const result = await saveChapterAuditRecord("glass-city", "cold-rain", {
+      instruction: "检查这一章前后是否连贯",
+      sourceText: "她没有立刻回头。",
+      result: {
+        mode: "audit",
+        summary: "整体没跑偏，但结尾解释偏多。",
+        primary: {
+          title: "本章总体判断",
+          text: "整体没跑偏，但结尾解释偏多。",
+          why: "会削弱悬念。"
+        },
+        alternatives: [],
+        warnings: ["结尾那段解释收一收。"],
+        nextContext: ["把最后一段拆成动作和停顿。"],
+        meta: {
+          requestedModel: "mimo",
+          resolvedProvider: "dmx",
+          resolvedModel: "mimo-v2.5-free",
+          usedFallback: false
+        }
+      }
+    });
+
+    expect(mocks.prisma.chapter.findFirst).toHaveBeenCalledWith({
+      where: {
+        slug: "cold-rain",
+        novel: {
+          slug: "glass-city"
+        }
+      },
+      select: {
+        id: true,
+        novelId: true
+      }
+    });
+    expect(mocks.prisma.aiSuggestion.create).toHaveBeenCalledWith({
+      data: {
+        novelId: "novel-1",
+        chapterId: "chapter-1",
+        type: "AUDIT",
+        instruction: "检查这一章前后是否连贯",
+        sourceText: "她没有立刻回头。",
+        suggestedText: "整体没跑偏，但结尾解释偏多。",
+        rationale: {
+          summary: "整体没跑偏，但结尾解释偏多。",
+          primary: {
+            title: "本章总体判断",
+            text: "整体没跑偏，但结尾解释偏多。",
+            why: "会削弱悬念。"
+          },
+          warnings: ["结尾那段解释收一收。"],
+          nextContext: ["把最后一段拆成动作和停顿。"],
+          alternatives: [],
+          meta: {
+            requestedModel: "mimo",
+            resolvedProvider: "dmx",
+            resolvedModel: "mimo-v2.5-free",
+            usedFallback: false
+          }
+        }
+      }
+    });
+    expect(result).toMatchObject({
+      id: "audit-3",
+      summary: "整体没跑偏，但结尾解释偏多。",
+      primaryTitle: "本章总体判断",
+      primaryText: "整体没跑偏，但结尾解释偏多。"
     });
   });
 

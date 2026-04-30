@@ -3,6 +3,7 @@ import { novelStyleSampleSchema } from "@/lib/novel-style";
 import { novelLengthOptions } from "@/lib/novel-length";
 import type {
   CharacterSeedInput,
+  GraphEntitySeedInput,
   GraphEntityKind,
   GraphRelationKind,
   NovelCreationInput,
@@ -23,7 +24,10 @@ type GraphSeed = {
   relations: RelationSeedInput[];
 };
 
-type GraphSeedInput = Pick<NovelCreationInput, "characterSeeds" | "relationSeeds">;
+type GraphSeedInput = Pick<
+  NovelCreationInput,
+  "characterSeeds" | "factionSeeds" | "locationSeeds" | "relationSeeds"
+>;
 
 const characterSeedSchema = z.object({
   name: z.string().trim().min(1, "人物姓名不能为空"),
@@ -58,24 +62,65 @@ const relationSeedSchema = z.object({
   note: z.string().trim().optional().default("")
 });
 
-function collectEntityNames(characterSeeds: CharacterSeedInput[]) {
-  return characterSeeds.flatMap((item) => {
-    const entries: { type: GraphEntityKind; name: string | undefined }[] = [
-      { type: "CHARACTER", name: normalizeOptionalText(item.name) }
-    ];
-    const factionName = normalizeOptionalText(item.factionName);
-    const locationName = normalizeOptionalText(item.locationName);
+const graphEntitySeedSchema = z.object({
+  name: z.string().trim().min(1, "图谱实体名称不能为空"),
+  summary: z.string().trim().optional().default("")
+});
 
-    if (factionName) {
-      entries.push({ type: "FACTION", name: factionName });
-    }
+function collectEntityNames(
+  characterSeeds: CharacterSeedInput[],
+  factionSeeds: GraphEntitySeedInput[],
+  locationSeeds: GraphEntitySeedInput[]
+) {
+  return [
+    ...characterSeeds.flatMap((item) => {
+      const entries: { type: GraphEntityKind; name: string | undefined }[] = [
+        { type: "CHARACTER", name: normalizeOptionalText(item.name) }
+      ];
+      const factionName = normalizeOptionalText(item.factionName);
+      const locationName = normalizeOptionalText(item.locationName);
 
-    if (locationName) {
-      entries.push({ type: "LOCATION", name: locationName });
-    }
+      if (factionName) {
+        entries.push({ type: "FACTION", name: factionName });
+      }
 
-    return entries;
-  });
+      if (locationName) {
+        entries.push({ type: "LOCATION", name: locationName });
+      }
+
+      return entries;
+    }),
+    ...factionSeeds.map((item) => ({
+      type: "FACTION" as const,
+      name: normalizeOptionalText(item.name)
+    })),
+    ...locationSeeds.map((item) => ({
+      type: "LOCATION" as const,
+      name: normalizeOptionalText(item.name)
+    }))
+  ];
+}
+
+function normalizeGraphEntitySeed(seed?: Partial<GraphEntitySeedInput>) {
+  return {
+    name: normalizeOptionalText(seed?.name) ?? "",
+    summary: normalizeOptionalText(seed?.summary)
+  };
+}
+
+function createExplicitEntities(seeds: GraphEntitySeedInput[], type: GraphEntityKind) {
+  return uniqueBy(
+    seeds
+      .map((item) => normalizeGraphEntitySeed(item))
+      .filter((item) => item.name)
+      .map((item) => ({
+        type,
+        name: item.name,
+        summary: item.summary,
+        profile: {}
+      })),
+    (item) => `${item.type}:${item.name}`
+  );
 }
 
 export const novelCreationSchema = z
@@ -93,7 +138,9 @@ export const novelCreationSchema = z
     worldSeed: z.string().trim().optional().default(""),
     styleGoal: z.string().trim().optional().default(""),
     styleSamples: z.array(novelStyleSampleSchema).max(3).default([]),
-    characterSeeds: z.array(characterSeedSchema).max(3).default([]),
+    factionSeeds: z.array(graphEntitySeedSchema).default([]),
+    locationSeeds: z.array(graphEntitySeedSchema).default([]),
+    characterSeeds: z.array(characterSeedSchema).default([]),
     relationSeeds: z.array(relationSeedSchema).default([])
   })
   .superRefine((input, ctx) => {
@@ -119,7 +166,7 @@ export const novelCreationSchema = z
 
     const seenGraphNames = new Map<string, Set<GraphEntityKind>>();
 
-    collectEntityNames(input.characterSeeds).forEach((item) => {
+    collectEntityNames(input.characterSeeds, input.factionSeeds, input.locationSeeds).forEach((item) => {
       if (!item.name) {
         return;
       }
@@ -230,22 +277,30 @@ export function buildInitialGraphSeed(input: GraphSeedInput): GraphSeed {
     survivingEntityKinds.set(item.name, item.type);
   });
 
-  const factionEntities = createScopedEntities(uniqueCharacterSeeds, "factionName", "FACTION").filter(
-    (item) => {
-      const existingKind = survivingEntityKinds.get(item.name);
-      if (existingKind && existingKind !== item.type) {
-        return false;
-      }
-
-      survivingEntityKinds.set(item.name, item.type);
-      return true;
+  const explicitFactionEntities = createExplicitEntities(input.factionSeeds ?? [], "FACTION");
+  const derivedFactionEntities = createScopedEntities(uniqueCharacterSeeds, "factionName", "FACTION");
+  const factionEntities = uniqueBy(
+    [...explicitFactionEntities, ...derivedFactionEntities],
+    (item) => `${item.type}:${item.name}`
+  ).filter((item) => {
+    const existingKind = survivingEntityKinds.get(item.name);
+    if (existingKind && existingKind !== item.type) {
+      return false;
     }
-  );
 
-  const locationEntities = createScopedEntities(
+    survivingEntityKinds.set(item.name, item.type);
+    return true;
+  });
+
+  const explicitLocationEntities = createExplicitEntities(input.locationSeeds ?? [], "LOCATION");
+  const derivedLocationEntities = createScopedEntities(
     uniqueCharacterSeeds,
     "locationName",
     "LOCATION"
+  );
+  const locationEntities = uniqueBy(
+    [...explicitLocationEntities, ...derivedLocationEntities],
+    (item) => `${item.type}:${item.name}`
   ).filter((item) => {
     const existingKind = survivingEntityKinds.get(item.name);
     if (existingKind && existingKind !== item.type) {
@@ -335,6 +390,14 @@ export function buildNovelCreationInput(raw: unknown) {
         title: sample.title?.trim() || undefined,
         content: sample.content.trim(),
         note: sample.note?.trim() || undefined
+      })),
+      factionSeeds: input.factionSeeds.map((item) => ({
+        name: item.name.trim(),
+        summary: item.summary?.trim() || undefined
+      })),
+      locationSeeds: input.locationSeeds.map((item) => ({
+        name: item.name.trim(),
+        summary: item.summary?.trim() || undefined
       }))
     },
     graph

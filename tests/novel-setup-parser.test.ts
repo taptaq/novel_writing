@@ -24,6 +24,18 @@ describe("parsedSetupDraftSchema", () => {
             note: "  偏克制  "
           }
         ],
+        factionSeeds: [
+          {
+            name: "  城档馆  ",
+            summary: "  旧港最早的档案修复机构。  "
+          }
+        ],
+        locationSeeds: [
+          {
+            name: "  下城档案塔  ",
+            summary: "  保存旧港潮汐档案的高塔。  "
+          }
+        ],
         characterSeeds: [
           {
             name: "  沈砚  ",
@@ -31,6 +43,14 @@ describe("parsedSetupDraftSchema", () => {
             summary: "  擅长从细节找裂缝。  ",
             factionName: "  城档馆  ",
             locationName: "  下城档案塔  "
+          }
+        ],
+        relationSeeds: [
+          {
+            sourceName: "  沈砚  ",
+            targetName: "  城档馆  ",
+            type: "MEMBER_OF",
+            description: "  沈砚长期在城档馆修复旧档案。  "
           }
         ]
       })
@@ -54,6 +74,18 @@ describe("parsedSetupDraftSchema", () => {
           note: "偏克制"
         }
       ],
+      factionSeeds: [
+        {
+          name: "城档馆",
+          summary: "旧港最早的档案修复机构。"
+        }
+      ],
+      locationSeeds: [
+        {
+          name: "下城档案塔",
+          summary: "保存旧港潮汐档案的高塔。"
+        }
+      ],
       characterSeeds: [
         {
           name: "沈砚",
@@ -63,13 +95,23 @@ describe("parsedSetupDraftSchema", () => {
           locationName: "下城档案塔"
         }
       ],
+      relationSeeds: [
+        {
+          sourceName: "沈砚",
+          targetName: "城档馆",
+          type: "MEMBER_OF",
+          description: "沈砚长期在城档馆修复旧档案。",
+          remark: "",
+          note: ""
+        }
+      ],
       guessedFields: [],
       missingFields: [],
       confidenceNotes: []
     });
   });
 
-  it("rejects more than 3 style samples or character seeds", () => {
+  it("rejects more than 3 style samples", () => {
     expect(
       parsedSetupDraftSchema.safeParse({
         styleSamples: [
@@ -86,6 +128,20 @@ describe("parsedSetupDraftSchema", () => {
         ]
       }).success
     ).toBe(false);
+  });
+
+  it("accepts any number of parsed character seeds", () => {
+    expect(
+      parsedSetupDraftSchema.safeParse({
+        characterSeeds: [
+          { name: "甲" },
+          { name: "乙" },
+          { name: "丙" },
+          { name: "丁" },
+          { name: "戊" }
+        ]
+      }).success
+    ).toBe(true);
   });
 
   it("rejects style sample content shorter than 20 characters and empty character names", () => {
@@ -114,14 +170,17 @@ describe("normalizeParsedSetupDraft", () => {
       worldSeed: "",
       styleGoal: "",
       styleSamples: [],
+      factionSeeds: [],
+      locationSeeds: [],
       characterSeeds: [],
+      relationSeeds: [],
       guessedFields: [],
       missingFields: [],
       confidenceNotes: []
     });
   });
 
-  it("limits arrays to 3 items, falls back invalid lengthCategory, and skips invalid entries", () => {
+  it("keeps all valid character seeds, caps style samples at 3, and skips invalid entries", () => {
     expect(
       normalizeParsedSetupDraft({
         title: "  雾港航线 ",
@@ -136,7 +195,21 @@ describe("normalizeParsedSetupDraft", () => {
           { name: " 沈砚 ", role: " 档案修复师 " },
           { name: " 林渡 " },
           { name: " 周棠 ", factionName: " 雾社 " },
+          { name: " 苏枕 ", locationName: " 北钟塔 " },
           { name: "   ", summary: "无效" }
+        ],
+        factionSeeds: [
+          { name: " 雾社 ", summary: " 港口地下情报组织 " },
+          { name: " 守钟会 " }
+        ],
+        locationSeeds: [
+          { name: " 北钟塔 ", summary: " 潮汐钟核心区域 " },
+          { name: " 白雾码头 " }
+        ],
+        relationSeeds: [
+          { sourceName: " 沈砚 ", targetName: " 雾社 ", type: "ALLY", description: " 暂时合作 " },
+          { sourceName: " 苏枕 ", targetName: " 北钟塔 ", type: "ROOTED_IN", description: " 长期驻守 " },
+          { sourceName: "   ", targetName: " 白雾码头 ", type: "OTHER", description: "无效" }
         ],
         guessedFields: [" premise ", " narrativeView "],
         missingFields: [" worldSeed "],
@@ -160,10 +233,37 @@ describe("normalizeParsedSetupDraft", () => {
         { title: "二", content: "第二段参考样文长度足够长，可以通过最小长度限制。" },
         { title: "三", content: "第三段参考样文长度足够长，可以通过最小长度限制。" }
       ],
+      factionSeeds: [
+        { name: "雾社", summary: "港口地下情报组织" },
+        { name: "守钟会", summary: "" }
+      ],
+      locationSeeds: [
+        { name: "北钟塔", summary: "潮汐钟核心区域" },
+        { name: "白雾码头", summary: "" }
+      ],
       characterSeeds: [
         { name: "沈砚", role: "档案修复师", summary: "", factionName: "", locationName: "" },
         { name: "林渡", role: "", summary: "", factionName: "", locationName: "" },
-        { name: "周棠", role: "", summary: "", factionName: "雾社", locationName: "" }
+        { name: "周棠", role: "", summary: "", factionName: "雾社", locationName: "" },
+        { name: "苏枕", role: "", summary: "", factionName: "", locationName: "北钟塔" }
+      ],
+      relationSeeds: [
+        {
+          sourceName: "沈砚",
+          targetName: "雾社",
+          type: "ALLY",
+          description: "暂时合作",
+          remark: "",
+          note: ""
+        },
+        {
+          sourceName: "苏枕",
+          targetName: "北钟塔",
+          type: "ROOTED_IN",
+          description: "长期驻守",
+          remark: "",
+          note: ""
+        }
       ],
       guessedFields: ["premise", "narrativeView"],
       missingFields: ["worldSeed"],
@@ -171,7 +271,7 @@ describe("normalizeParsedSetupDraft", () => {
     });
   });
 
-  it("validates array entries before applying the 3-item cap", () => {
+  it("validates array entries before applying the style sample cap", () => {
     expect(
       normalizeParsedSetupDraft({
         styleSamples: [
@@ -189,6 +289,18 @@ describe("normalizeParsedSetupDraft", () => {
           { name: " 林渡 " },
           { name: " 周棠 " },
           { name: " 苏枕 " }
+        ],
+        factionSeeds: [
+          { name: "   ", summary: "无效势力" },
+          { name: " 雾社 " }
+        ],
+        locationSeeds: [
+          { name: "   ", summary: "无效地点" },
+          { name: " 北钟塔 " }
+        ],
+        relationSeeds: [
+          { sourceName: "   ", targetName: "北钟塔", type: "OTHER", description: "无效" },
+          { sourceName: "沈砚", targetName: "雾社", type: "ALLY", description: "合作" }
         ]
       })
     ).toMatchObject({
@@ -197,7 +309,15 @@ describe("normalizeParsedSetupDraft", () => {
         { title: "二", content: "第二段参考样文长度足够长，可以通过最小长度限制。" },
         { title: "三", content: "第三段参考样文长度足够长，可以通过最小长度限制。" }
       ],
-      characterSeeds: [{ name: "沈砚" }, { name: "林渡" }, { name: "周棠" }]
+      factionSeeds: [{ name: "雾社" }],
+      locationSeeds: [{ name: "北钟塔" }],
+      characterSeeds: [
+        { name: "沈砚" },
+        { name: "林渡" },
+        { name: "周棠" },
+        { name: "苏枕" }
+      ],
+      relationSeeds: [{ sourceName: "沈砚", targetName: "雾社", type: "ALLY" }]
     });
   });
 

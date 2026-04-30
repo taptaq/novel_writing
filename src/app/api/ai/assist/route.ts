@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assistModes, modelSelections } from "@/lib/ai/types";
 import { runWritingAssist } from "@/lib/ai/writing-engine";
-import { getChapterEditorData } from "@/lib/repositories/novels";
+import { getChapterEditorData, saveChapterAuditRecord } from "@/lib/repositories/novels";
 import { writingSkillPresetIds } from "@/lib/novel-writing-skills";
 
 const payloadSchema = z.object({
@@ -62,6 +62,18 @@ export async function POST(request: Request) {
         status: item.status
       }))
     });
+
+    if (payload.mode === "audit") {
+      try {
+        await saveChapterAuditRecord(payload.novelSlug, payload.chapterSlug, {
+          instruction: payload.instruction,
+          sourceText: payload.currentText,
+          result
+        });
+      } catch (error) {
+        console.error("Failed to save chapter audit record.", error);
+      }
+    }
 
     return NextResponse.json(result);
   } catch (error) {

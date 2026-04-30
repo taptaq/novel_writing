@@ -17,6 +17,31 @@ const parsedSetupCharacterSeedSchema = z.object({
   locationName: z.string().trim().optional().default("")
 });
 
+const parsedSetupGraphEntitySeedSchema = z.object({
+  name: z.string().trim().min(1, "图谱实体名称不能为空"),
+  summary: z.string().trim().optional().default("")
+});
+
+const parsedSetupRelationKinds = [
+  "ALLY",
+  "ENEMY",
+  "FAMILY",
+  "MENTOR",
+  "SUBORDINATE",
+  "OTHER",
+  "MEMBER_OF",
+  "ROOTED_IN"
+] as const;
+
+const parsedSetupRelationSeedSchema = z.object({
+  sourceName: z.string().trim().min(1, "关系起点不能为空"),
+  targetName: z.string().trim().min(1, "关系终点不能为空"),
+  type: z.enum(parsedSetupRelationKinds),
+  description: z.string().trim().optional().default(""),
+  remark: z.string().trim().optional().default(""),
+  note: z.string().trim().optional().default("")
+});
+
 export const parsedSetupDraftSchema = z.object({
   title: z.string().trim().optional().default(""),
   category: z.string().trim().optional().default(""),
@@ -31,7 +56,10 @@ export const parsedSetupDraftSchema = z.object({
   worldSeed: z.string().trim().optional().default(""),
   styleGoal: z.string().trim().optional().default(""),
   styleSamples: z.array(novelStyleSampleSchema).max(3).default([]),
-  characterSeeds: z.array(parsedSetupCharacterSeedSchema).max(3).default([]),
+  factionSeeds: z.array(parsedSetupGraphEntitySeedSchema).default([]),
+  locationSeeds: z.array(parsedSetupGraphEntitySeedSchema).default([]),
+  characterSeeds: z.array(parsedSetupCharacterSeedSchema).default([]),
+  relationSeeds: z.array(parsedSetupRelationSeedSchema).default([]),
   guessedFields: z.array(z.string().trim()).default([]),
   missingFields: z.array(z.string().trim()).default([]),
   confidenceNotes: z.array(z.string().trim()).default([])
@@ -65,7 +93,8 @@ function normalizePositiveInteger(value: unknown) {
 
 function normalizeValidatedArray<T>(
   value: unknown,
-  parseItem: (item: unknown) => T | undefined
+  parseItem: (item: unknown) => T | undefined,
+  maxItems?: number
 ) {
   if (!Array.isArray(value)) {
     return [];
@@ -76,12 +105,19 @@ function normalizeValidatedArray<T>(
     return parsed === undefined ? [] : [parsed];
   });
 
-  return validItems.slice(0, 3);
+  return typeof maxItems === "number" ? validItems.slice(0, maxItems) : validItems;
 }
 
 function normalizeStyleSamples(value: unknown) {
   return normalizeValidatedArray(value, (item) => {
     const parsed = novelStyleSampleSchema.safeParse(item);
+    return parsed.success ? parsed.data : undefined;
+  }, 3);
+}
+
+function normalizeGraphEntitySeeds(value: unknown) {
+  return normalizeValidatedArray(value, (item) => {
+    const parsed = parsedSetupGraphEntitySeedSchema.safeParse(item);
     return parsed.success ? parsed.data : undefined;
   });
 }
@@ -89,6 +125,13 @@ function normalizeStyleSamples(value: unknown) {
 function normalizeCharacterSeeds(value: unknown) {
   return normalizeValidatedArray(value, (item) => {
     const parsed = parsedSetupCharacterSeedSchema.safeParse(item);
+    return parsed.success ? parsed.data : undefined;
+  });
+}
+
+function normalizeRelationSeeds(value: unknown) {
+  return normalizeValidatedArray(value, (item) => {
+    const parsed = parsedSetupRelationSeedSchema.safeParse(item);
     return parsed.success ? parsed.data : undefined;
   });
 }
@@ -114,7 +157,10 @@ export function normalizeParsedSetupDraft(input: unknown): ParsedSetupDraft {
     worldSeed: normalizeString(value.worldSeed),
     styleGoal: normalizeString(value.styleGoal),
     styleSamples: normalizeStyleSamples(value.styleSamples),
+    factionSeeds: normalizeGraphEntitySeeds(value.factionSeeds),
+    locationSeeds: normalizeGraphEntitySeeds(value.locationSeeds),
     characterSeeds: normalizeCharacterSeeds(value.characterSeeds),
+    relationSeeds: normalizeRelationSeeds(value.relationSeeds),
     guessedFields: normalizeStringArray(value.guessedFields),
     missingFields: normalizeStringArray(value.missingFields),
     confidenceNotes: normalizeStringArray(value.confidenceNotes)

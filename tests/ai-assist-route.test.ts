@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WritingAssistResponse } from "@/lib/ai/types";
 
-const { getChapterEditorData, runWritingAssist } = vi.hoisted(() => ({
+const { getChapterEditorData, saveChapterAuditRecord, runWritingAssist } = vi.hoisted(() => ({
   getChapterEditorData: vi.fn(),
+  saveChapterAuditRecord: vi.fn(),
   runWritingAssist: vi.fn()
 }));
 
 vi.mock("@/lib/repositories/novels", () => ({
-  getChapterEditorData
+  getChapterEditorData,
+  saveChapterAuditRecord
 }));
 
 vi.mock("@/lib/ai/writing-engine", () => ({
@@ -83,6 +85,7 @@ describe("POST /api/ai/assist", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getChapterEditorData.mockResolvedValue(chapterData);
+    saveChapterAuditRecord.mockResolvedValue(null);
     runWritingAssist.mockResolvedValue(assistResponse);
   });
 
@@ -119,6 +122,44 @@ describe("POST /api/ai/assist", () => {
         modelSelection: "glm"
       })
     );
+    expect(saveChapterAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it("persists chapter audit results after a successful audit request", async () => {
+    await POST(
+      buildRequest({
+        novelSlug: "novel",
+        chapterSlug: "chapter",
+        mode: "audit",
+        modelSelection: "mimo",
+        instruction: "检查这一章前后是否连贯",
+        currentText: "海风卷进钟楼。"
+      })
+    );
+
+    expect(saveChapterAuditRecord).toHaveBeenCalledWith("novel", "chapter", {
+      instruction: "检查这一章前后是否连贯",
+      sourceText: "海风卷进钟楼。",
+      result: assistResponse
+    });
+  });
+
+  it("still returns the audit result when audit persistence fails", async () => {
+    saveChapterAuditRecord.mockRejectedValueOnce(new Error("write failed"));
+
+    const response = await POST(
+      buildRequest({
+        novelSlug: "novel",
+        chapterSlug: "chapter",
+        mode: "audit",
+        modelSelection: "mimo",
+        instruction: "检查这一章前后是否连贯",
+        currentText: "海风卷进钟楼。"
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(assistResponse);
   });
 
   it("passes writing skill preset through to runWritingAssist", async () => {

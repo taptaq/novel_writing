@@ -1,4 +1,5 @@
 import type {
+  ChapterAuditRecordSummary,
   ChapterEditorData,
   ChapterVersionSummary,
   GraphEntityKind,
@@ -422,7 +423,21 @@ export function getDemoChapterEditor(novelSlug: string, chapterSlug: string): Ch
       foreshadows: workspace.foreshadows,
       entities: workspace.entities
     }),
-    foreshadows: workspace.foreshadows.filter((item) => item.firstMentionChapterSlug === chapterSlug || item.status === "OPEN")
+    foreshadows: workspace.foreshadows.filter((item) => item.firstMentionChapterSlug === chapterSlug || item.status === "OPEN"),
+    auditHistory: [
+      {
+        id: `audit-${chapter.id}-1`,
+        createdAt: demoMeta.generatedAt,
+        summary: "整体能接上前文，但结尾解释稍微多了一点。",
+        primaryTitle: "本章总体判断",
+        primaryText: "前半段悬念成立，后半段可以再收一句解释，让危险感留在动作上。",
+        warnings: ["老齐那句解释偏满，容易把悬念提前说透。"],
+        nextContext: ["把解释拆开，先给动作，再留一句没说完的话。"],
+        resolvedProvider: "demo",
+        resolvedModel: "demo-audit",
+        usedFallback: false
+      }
+    ] satisfies ChapterAuditRecordSummary[]
   };
 }
 

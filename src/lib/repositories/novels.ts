@@ -16,9 +16,11 @@ import {
   novelStyleSampleSchema
 } from "@/lib/novel-style";
 import { buildChapterMemory } from "@/lib/chapter-memory";
+import type { WritingAssistResponse } from "@/lib/ai/types";
 import { prisma } from "@/lib/prisma";
 import { estimateWordCount, excerpt } from "@/lib/text/word-count";
 import type {
+  ChapterAuditRecordSummary,
   ChapterEditorData,
   ChapterVersionSummary,
   GraphEntityKind,
@@ -167,12 +169,56 @@ type ChapterEditorNovelRow = Omit<WorkspaceNovelRow, "styleProfile" | "chapters"
   chapters: ChapterEditorChapterRow[];
 };
 
+type AuditSuggestionRow = {
+  id: string;
+  suggestedText: string;
+  rationale: JsonValue | null;
+  createdAt: Date;
+};
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function toChapterAuditRecordSummary(row: AuditSuggestionRow): ChapterAuditRecordSummary {
+  const rationale = toRecord(row.rationale);
+  const primary = toRecord(rationale?.primary);
+  const meta = toRecord(rationale?.meta);
+  const primaryText =
+    typeof primary?.text === "string" && primary.text.trim().length > 0
+      ? primary.text
+      : row.suggestedText;
+
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    summary:
+      typeof rationale?.summary === "string" && rationale.summary.trim().length > 0
+        ? rationale.summary
+        : excerpt(primaryText),
+    primaryTitle:
+      typeof primary?.title === "string" && primary.title.trim().length > 0
+        ? primary.title
+        : "本章总体判断",
+    primaryText,
+    warnings: toStringArray(rationale?.warnings),
+    nextContext: toStringArray(rationale?.nextContext),
+    resolvedProvider: typeof meta?.resolvedProvider === "string" ? meta.resolvedProvider : undefined,
+    resolvedModel: typeof meta?.resolvedModel === "string" ? meta.resolvedModel : undefined,
+    usedFallback: typeof meta?.usedFallback === "boolean" ? meta.usedFallback : undefined
+  };
 }
 
 function slugifySegment(value: string) {
@@ -1205,6 +1251,26 @@ export async function getChapterEditorData(
       return null;
     }
 
+    let auditHistory: ChapterAuditRecordSummary[] = [];
+
+    try {
+      const auditRows = (await prisma.aiSuggestion.findMany({
+        where: {
+          novelId: novel.id,
+          chapterId: chapter.id,
+          type: "AUDIT"
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 5
+      })) as AuditSuggestionRow[];
+
+      auditHistory = auditRows.map(toChapterAuditRecordSummary);
+    } catch {
+      auditHistory = [];
+    }
+
     return {
       novel: {
         id: novel.id,
@@ -1321,9 +1387,62 @@ export async function getChapterEditorData(
         status: item.status,
         firstMentionChapterSlug: item.firstMentionChapter?.slug,
         payoffChapterSlug: item.payoffChapter?.slug
-      }))
+      })),
+      auditHistory
     };
   } catch {
     return null;
   }
+}
+
+export async function saveChapterAuditRecord(
+  novelSlug: string,
+  chapterSlug: string,
+  input: {
+    instruction: string;
+    sourceText: string;
+    result: WritingAssistResponse;
+  }
+): Promise<ChapterAuditRecordSummary | null> {
+  if (!isDatabaseConfigured) {
+    return null;
+  }
+
+  const chapter = await prisma.chapter.findFirst({
+    where: {
+      slug: chapterSlug,
+      novel: {
+        slug: novelSlug
+      }
+    },
+    select: {
+      id: true,
+      novelId: true
+    }
+  });
+
+  if (!chapter) {
+    return null;
+  }
+
+  const savedRecord = (await prisma.aiSuggestion.create({
+    data: {
+      novelId: chapter.novelId,
+      chapterId: chapter.id,
+      type: "AUDIT",
+      instruction: input.instruction,
+      sourceText: input.sourceText,
+      suggestedText: input.result.primary.text,
+      rationale: {
+        summary: input.result.summary,
+        primary: input.result.primary,
+        warnings: input.result.warnings,
+        nextContext: input.result.nextContext,
+        alternatives: input.result.alternatives,
+        meta: input.result.meta
+      }
+    }
+  })) as AuditSuggestionRow;
+
+  return toChapterAuditRecordSummary(savedRecord);
 }

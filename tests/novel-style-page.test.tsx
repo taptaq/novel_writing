@@ -192,6 +192,88 @@ describe("Novel style page contracts", () => {
     expect(markup).toContain("创建这本书");
   });
 
+  it("renders a detailed parse preview when parsed setup data exists", () => {
+    const markup = renderToStaticMarkup(
+      <NovelCreationForm
+        initialCreationMode="ai_parse"
+        initialParsedSetupDraft={{
+          title: "潮汐灰烬",
+          category: "悬疑",
+          subGenre: "港口谜案",
+          targetAudience: "成年读者",
+          premise: "一次停摆的潮汐钟，让修钟学徒卷进旧港失踪案。",
+          narrativeView: "第三人称限知",
+          storyStructure: "三幕式",
+          lengthCategory: "LONG",
+          plannedChapterCount: 18,
+          targetWordsPerChapter: 3000,
+          worldSeed: "盐雾旧港与钟楼区。",
+          styleGoal: "克制、冷感、细节推进。",
+          styleSamples: [],
+          factionSeeds: [
+            {
+              name: "城档馆",
+              summary: "旧港档案机构"
+            }
+          ],
+          locationSeeds: [
+            {
+              name: "北钟塔",
+              summary: "潮汐钟核心区"
+            }
+          ],
+          characterSeeds: [
+            {
+              name: "沈砚",
+              role: "修钟学徒",
+              summary: "擅长修钟，也擅长从细节里找破口。",
+              factionName: "旧港钟楼",
+              locationName: "下城钟房"
+            },
+            {
+              name: "周棠",
+              role: "港务署记录员",
+              summary: "手里握着案卷里缺掉的那一页。",
+              factionName: "港务署",
+              locationName: "旧港档案室"
+            }
+          ],
+          relationSeeds: [
+            {
+              sourceName: "沈砚",
+              targetName: "城档馆",
+              type: "MEMBER_OF",
+              description: "长期在馆内工作"
+            }
+          ],
+          guessedFields: ["目标受众", "预计总章数"],
+          missingFields: ["文风参考样文"],
+          confidenceNotes: ["篇幅是按设定复杂度推测的"]
+        }}
+      />
+    );
+
+    expect(markup).toContain("核心信息预览");
+    expect(markup).toContain("规划信息预览");
+    expect(markup).toContain("设定信息预览");
+    expect(markup).toContain("人物解析");
+    expect(markup).toContain("图谱预览");
+    expect(markup).toContain("解析提示");
+    expect(markup).toContain("潮汐灰烬");
+    expect(markup).toContain("港口谜案");
+    expect(markup).toContain("18 章");
+    expect(markup).toContain("约 3000 字");
+    expect(markup).toContain("城档馆");
+    expect(markup).toContain("北钟塔");
+    expect(markup).toContain("已识别关系");
+    expect(markup).toContain("<li>沈砚 属于 城档馆</li>");
+    expect(markup).toContain("沈砚 属于 城档馆");
+    expect(markup).not.toContain("MEMBER_OF");
+    expect(markup).toContain("沈砚");
+    expect(markup).toContain("周棠");
+    expect(markup).toContain("应用全部不会覆盖文风参考");
+  });
+
   it("renders length category controls and default planning hints on the creation form", () => {
     const markup = renderToStaticMarkup(<NovelCreationForm initialCreationMode="ai_parse" />);
 

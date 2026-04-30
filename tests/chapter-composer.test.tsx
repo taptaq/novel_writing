@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildAssistRequestBody,
+  buildChapterAuditInstruction,
   ChapterComposer,
   getStyleProfileUiState
 } from "@/components/chapter-composer";
@@ -555,6 +556,20 @@ const chapterData: ChapterEditorData = {
       hook: "匿名来信",
       status: "OPEN"
     }
+  ],
+  auditHistory: [
+    {
+      id: "audit-1",
+      createdAt: "2026-04-26T05:30:00.000Z",
+      summary: "整体顺，但老齐这段解释还是偏满。",
+      primaryTitle: "本章总体判断",
+      primaryText: "前半段有悬念，后半段解释可以再收一点。",
+      warnings: ["老齐这一段说得太透。"],
+      nextContext: ["把解释拆成动作和停顿。"],
+      resolvedProvider: "dmx",
+      resolvedModel: "mimo-v2.5-free",
+      usedFallback: false
+    }
   ]
 };
 
@@ -658,10 +673,37 @@ describe("ChapterComposer", () => {
     expect(text).toContain("第三声钟响前");
     expect(text).toContain("潮痕未退");
     expect(text).toContain("立即保存");
+    expect(text).toContain("保存并审核本章");
     expect(text).toContain("查看版本变化");
     expect(text).toContain("查看相关设定");
     expect(text).toContain("先写正文就行。卡住了，再用右边这些辅助功能。");
     expect(text).toContain("先点一次右边按钮，这里就会出现候选稿。");
+  });
+
+  it("shows a dedicated chapter audit desk with clear check targets", () => {
+    const markup = renderToStaticMarkup(
+      <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
+    );
+    const text = normalizeWhitespace(stripTags(markup));
+
+    expect(text).toContain("章节审核台");
+    expect(text).toContain("前后连贯");
+    expect(text).toContain("人物和设定");
+    expect(text).toContain("伏笔和剧情线");
+    expect(text).toContain("AI 味和句子");
+    expect(text).toContain("保存并审核本章");
+  });
+
+  it("shows recent saved audit records in the audit desk", () => {
+    const markup = renderToStaticMarkup(
+      <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
+    );
+    const text = normalizeWhitespace(stripTags(markup));
+
+    expect(text).toContain("最近审核记录");
+    expect(text).toContain("整体顺，但老齐这段解释还是偏满。");
+    expect(text).toContain("老齐这一段说得太透。");
+    expect(text).toContain("把解释拆成动作和停顿。");
   });
 
   it("shows saved status by default", () => {
@@ -1468,6 +1510,119 @@ describe("ChapterComposer", () => {
       disableStyleProfile: true,
       instruction: "改得更克制",
       currentText: "海风卷进钟楼。"
+    });
+  });
+
+  it("builds a plain-Chinese audit instruction for end-of-chapter review", () => {
+    const instruction = buildChapterAuditInstruction("让主角意识到危险");
+
+    expect(instruction).toContain("请按章节审核台的方式检查这一章");
+    expect(instruction).toContain("前后连贯");
+    expect(instruction).toContain("人物和设定");
+    expect(instruction).toContain("伏笔和剧情线");
+    expect(instruction).toContain("AI 味和句子");
+    expect(instruction).toContain("让主角意识到危险");
+  });
+
+  it("saves then runs a dedicated chapter audit and renders the audit report", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            chapter: {
+              slug: "bell-before-dawn",
+              wordCount: 32,
+              updatedAt: "2026-04-29T10:07:00.000Z"
+            },
+            version: {
+              id: "version-5",
+              source: "manual",
+              createdAt: "2026-04-29T10:07:00.000Z",
+              wordCount: 32
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            mode: "audit",
+            summary: "这一章能看，但有两个地方会让人出戏。",
+            primary: {
+              title: "本章总体判断",
+              text: "前半段紧张感够了，但后半段解释偏多，人物反应也有一点跳。",
+              why: "这样会削弱悬念。"
+            },
+            alternatives: [],
+            warnings: ["老齐前一章更克制，这一章解释得太满。", "匿名来信的作用说早了半步。"],
+            nextContext: ["把老齐的解释压短。", "让匿名来信先只露一半信息。"],
+            meta: {
+              requestedModel: "auto",
+              resolvedProvider: "dmx",
+              resolvedModel: "mimo-v2.5-free",
+              usedFallback: false
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.editor.value = "海风卷进钟楼，她先把那封信压回桌面，又去看墙上的旧港图。";
+        view.editor.dispatchEvent(new FakeEvent("input"));
+      });
+
+      await React.act(async () => {
+        view.findButtonByText("保存并审核本章").dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plainText: "海风卷进钟楼，她先把那封信压回桌面，又去看墙上的旧港图。",
+          source: "manual",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/ai/assist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          novelSlug: "mist-harbor",
+          chapterSlug: "bell-before-dawn",
+          mode: "audit",
+          modelSelection: "auto",
+          disableStyleProfile: false,
+          instruction: buildChapterAuditInstruction("让主角意识到危险"),
+          currentText: "海风卷进钟楼，她先把那封信压回桌面，又去看墙上的旧港图。"
+        })
+      });
+
+      const text = view.getText();
+      expect(text).toContain("章节审核结果");
+      expect(text).toContain("这一章能看，但有两个地方会让人出戏。");
+      expect(text).toContain("高风险问题");
+      expect(text).toContain("可优化方向");
+      expect(text).toContain("老齐前一章更克制");
+      expect(text).toContain("把老齐的解释压短");
     });
   });
 });

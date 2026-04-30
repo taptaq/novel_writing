@@ -14,9 +14,11 @@ import {
 } from "@/lib/novel-length";
 import type {
   CharacterSeedInput,
+  GraphEntitySeedInput,
   NovelLengthCategory,
   ParsedSetupCharacterSeed,
-  ParsedSetupDraft
+  ParsedSetupDraft,
+  RelationSeedInput
 } from "@/types/domain";
 
 type StyleSampleFormInput = {
@@ -46,9 +48,15 @@ type ParsedDraftApplyMode = "replace_all" | "fill_empty";
 type CreationMode = "quick" | "ai_parse";
 type NovelCreationFormProps = {
   initialCreationMode?: CreationMode;
+  initialParsedSetupDraft?: ParsedSetupDraft | null;
 };
 
-const MAX_CHARACTER_SEEDS = 3;
+type ParsedSetupGraphDraft = {
+  factionSeeds: GraphEntitySeedInput[];
+  locationSeeds: GraphEntitySeedInput[];
+  relationSeeds: RelationSeedInput[];
+};
+
 const MIN_CHARACTER_SEEDS = 1;
 const MAX_STYLE_SAMPLES = 3;
 
@@ -65,10 +73,6 @@ export function createInitialCharacterSeeds(): CharacterSeedInput[] {
 }
 
 export function addCharacterSeed(characterSeeds: CharacterSeedInput[]): CharacterSeedInput[] {
-  if (characterSeeds.length >= MAX_CHARACTER_SEEDS) {
-    return characterSeeds;
-  }
-
   return [...characterSeeds, createEmptyCharacterSeed()];
 }
 
@@ -85,7 +89,7 @@ export function removeCharacterSeed(
 
 const initialCharacterSeeds: CharacterSeedInput[] = createInitialCharacterSeeds();
 
-const initialStyleSamples: StyleSampleFormInput[] = Array.from({ length: 3 }, () => ({
+const initialStyleSamples: StyleSampleFormInput[] = Array.from({ length: MAX_STYLE_SAMPLES }, () => ({
   title: "",
   content: "",
   note: ""
@@ -94,10 +98,21 @@ const initialStyleSamples: StyleSampleFormInput[] = Array.from({ length: 3 }, ()
 export function createInitialParsedSetupDraft(): ParsedSetupDraft {
   return {
     styleSamples: [],
+    factionSeeds: [],
+    locationSeeds: [],
     characterSeeds: [],
+    relationSeeds: [],
     guessedFields: [],
     missingFields: [],
     confidenceNotes: []
+  };
+}
+
+export function createInitialParsedGraphDraft(): ParsedSetupGraphDraft {
+  return {
+    factionSeeds: [],
+    locationSeeds: [],
+    relationSeeds: []
   };
 }
 
@@ -174,16 +189,133 @@ function normalizeParsedCharacterSeed(seed?: Partial<ParsedSetupCharacterSeed>):
   };
 }
 
+function normalizeGraphEntitySeedInput(seed?: Partial<GraphEntitySeedInput>): GraphEntitySeedInput {
+  return {
+    name: seed?.name?.trim() ?? "",
+    summary: seed?.summary?.trim() ?? ""
+  };
+}
+
+function normalizeRelationSeedInput(seed?: Partial<RelationSeedInput>): RelationSeedInput {
+  return {
+    sourceName: seed?.sourceName?.trim() ?? "",
+    targetName: seed?.targetName?.trim() ?? "",
+    type: seed?.type ?? "OTHER",
+    description: seed?.description?.trim() ?? "",
+    remark: seed?.remark?.trim() ?? "",
+    note: seed?.note?.trim() ?? ""
+  };
+}
+
+export function formatRelationPreview(relation: RelationSeedInput) {
+  const sourceName = relation.sourceName?.trim();
+  const targetName = relation.targetName?.trim();
+
+  if (!sourceName || !targetName) {
+    return "";
+  }
+
+  switch (relation.type) {
+    case "ALLY":
+      return `${sourceName} 与 ${targetName} 是盟友`;
+    case "ENEMY":
+      return `${sourceName} 与 ${targetName} 处于对立`;
+    case "FAMILY":
+      return `${sourceName} 与 ${targetName} 是家人`;
+    case "MENTOR":
+      return `${sourceName} 把 ${targetName} 当老师`;
+    case "SUBORDINATE":
+      return `${sourceName} 是 ${targetName} 的下属`;
+    case "MEMBER_OF":
+      return `${sourceName} 属于 ${targetName}`;
+    case "ROOTED_IN":
+      return `${sourceName} 常驻 ${targetName}`;
+    case "OTHER":
+    default:
+      return `${sourceName} 与 ${targetName} 有关联`;
+  }
+}
+
+function readLengthCategoryLabel(value?: NovelLengthCategory) {
+  return getNovelLengthProfile(value ?? "MEDIUM").label;
+}
+
+function normalizeGraphEntitySeeds(seeds: GraphEntitySeedInput[]) {
+  const seen = new Set<string>();
+
+  return seeds
+    .map((item) => normalizeGraphEntitySeedInput(item))
+    .filter((item) => item.name)
+    .filter((item) => {
+      const key = item.name;
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeRelationSeeds(seeds: RelationSeedInput[]) {
+  const seen = new Set<string>();
+
+  return seeds
+    .map((item) => normalizeRelationSeedInput(item))
+    .filter((item) => item.sourceName && item.targetName)
+    .filter((item) => {
+      const key = [
+        item.sourceName,
+        item.targetName,
+        item.type,
+        item.description,
+        item.remark,
+        item.note
+      ].join("::");
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+export function extractParsedSetupGraphDraft(draft: ParsedSetupDraft): ParsedSetupGraphDraft {
+  return {
+    factionSeeds: normalizeGraphEntitySeeds(draft.factionSeeds ?? []),
+    locationSeeds: normalizeGraphEntitySeeds(draft.locationSeeds ?? []),
+    relationSeeds: normalizeRelationSeeds(draft.relationSeeds ?? [])
+  };
+}
+
+export function mergeParsedSetupGraphDraft(
+  currentDraft: ParsedSetupGraphDraft,
+  parsedDraft: ParsedSetupDraft,
+  mode: ParsedDraftApplyMode
+): ParsedSetupGraphDraft {
+  const nextDraft = extractParsedSetupGraphDraft(parsedDraft);
+
+  if (mode === "replace_all") {
+    return nextDraft;
+  }
+
+  return {
+    factionSeeds: currentDraft.factionSeeds.length > 0 ? currentDraft.factionSeeds : nextDraft.factionSeeds,
+    locationSeeds:
+      currentDraft.locationSeeds.length > 0 ? currentDraft.locationSeeds : nextDraft.locationSeeds,
+    relationSeeds:
+      currentDraft.relationSeeds.length > 0 ? currentDraft.relationSeeds : nextDraft.relationSeeds
+  };
+}
+
 function isCharacterSeedBlank(seed: CharacterSeedInput) {
   return !hasValue(seed.name) &&
     !hasValue(seed.role) &&
     !hasValue(seed.summary) &&
     !hasValue(seed.factionName) &&
     !hasValue(seed.locationName);
-}
-
-function isStyleSampleBlank(sample: StyleSampleFormInput) {
-  return !hasValue(sample.title) && !hasValue(sample.content) && !hasValue(sample.note);
 }
 
 function hasValue(value?: string | number | null) {
@@ -231,19 +363,15 @@ export function applyParsedSetupDraft(
   draft: ParsedSetupDraft,
   mode: ParsedDraftApplyMode
 ): CreationFormState {
-  const parsedCharacterSeeds = draft.characterSeeds
-    .slice(0, MAX_CHARACTER_SEEDS)
-    .map((item) => normalizeParsedCharacterSeed(item));
-  const nextCharacterSeedCount = Math.min(
-    MAX_CHARACTER_SEEDS,
-    Math.max(currentForm.characterSeeds.length, parsedCharacterSeeds.length, MIN_CHARACTER_SEEDS)
+  const parsedCharacterSeeds = draft.characterSeeds.map((item) => normalizeParsedCharacterSeed(item));
+  const nextCharacterSeedCount = Math.max(
+    currentForm.characterSeeds.length,
+    parsedCharacterSeeds.length,
+    MIN_CHARACTER_SEEDS
   );
   const currentCharacterSeeds = Array.from({ length: nextCharacterSeedCount }, (_, index) => {
     return currentForm.characterSeeds[index] ?? createEmptyCharacterSeed();
   });
-  const parsedStyleSamples = draft.styleSamples
-    .slice(0, MAX_STYLE_SAMPLES)
-    .map((item) => normalizeStyleSampleInput(item));
 
   return {
     ...currentForm,
@@ -270,18 +398,8 @@ export function applyParsedSetupDraft(
     ),
     worldSeed: mergeTextValue(currentForm.worldSeed, draft.worldSeed, mode),
     styleGoal: mergeTextValue(currentForm.styleGoal, draft.styleGoal, mode),
-    styleSamples: currentForm.styleSamples.map((sample, index) => {
-      const parsedSample = parsedStyleSamples[index];
-      if (!parsedSample) {
-        return mode === "replace_all" ? normalizeStyleSampleInput() : sample;
-      }
-
-      if (mode === "replace_all") {
-        return parsedSample;
-      }
-
-      return isStyleSampleBlank(sample) ? parsedSample : sample;
-    }),
+    // 文风参考需要用户自己确认，不在这里自动覆盖。
+    styleSamples: currentForm.styleSamples.map((sample) => normalizeStyleSampleInput(sample)),
     characterSeeds: currentCharacterSeeds.map((seed, index) =>
       mergeCharacterSeed(seed, parsedCharacterSeeds[index], mode)
     )
@@ -317,7 +435,8 @@ function readErrorMessage(payload: unknown) {
 }
 
 export function NovelCreationForm({
-  initialCreationMode = "quick"
+  initialCreationMode = "quick",
+  initialParsedSetupDraft = null
 }: NovelCreationFormProps = {}) {
   const router = useRouter();
   const [form, setForm] = useState(initialFormState);
@@ -325,7 +444,14 @@ export function NovelCreationForm({
   const [isExpansionOpen, setIsExpansionOpen] = useState(initialCreationMode === "ai_parse");
   const [setupSourceText, setSetupSourceText] = useState("");
   const [setupSourceFileName, setSetupSourceFileName] = useState("");
-  const [parsedSetupDraft, setParsedSetupDraft] = useState<ParsedSetupDraft | null>(null);
+  const [parsedSetupDraft, setParsedSetupDraft] = useState<ParsedSetupDraft | null>(
+    initialParsedSetupDraft
+  );
+  const [appliedParsedGraphDraft, setAppliedParsedGraphDraft] = useState<ParsedSetupGraphDraft>(
+    initialParsedSetupDraft
+      ? extractParsedSetupGraphDraft(initialParsedSetupDraft)
+      : createInitialParsedGraphDraft()
+  );
   const [isParsingSetup, setIsParsingSetup] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -490,6 +616,9 @@ export function NovelCreationForm({
     }
 
     setForm((current) => applyParsedSetupDraft(current, parsedSetupDraft, mode));
+    setAppliedParsedGraphDraft((current) =>
+      mergeParsedSetupGraphDraft(current, parsedSetupDraft, mode)
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -528,8 +657,10 @@ export function NovelCreationForm({
           note: sample.note.trim()
         }))
         .filter((sample) => sample.content.length > 0),
+      factionSeeds: appliedParsedGraphDraft.factionSeeds,
+      locationSeeds: appliedParsedGraphDraft.locationSeeds,
       characterSeeds: normalizedCharacterSeeds,
-      relationSeeds: []
+      relationSeeds: appliedParsedGraphDraft.relationSeeds
     };
 
     try {
@@ -676,24 +807,145 @@ export function NovelCreationForm({
 
               <div className="creation-grid creation-grid-2">
                 <div className="note-box">
-                  <p className="field-label">一句话 premise</p>
+                  <p className="field-label">核心信息预览</p>
+                  <p>{parsedSetupDraft?.title?.trim() || "书名：待解析"}</p>
                   <p>
-                    {parsedSetupDraft?.premise?.trim() || "暂无 premise，解析后会先在这里预览。"}
+                    {parsedSetupDraft
+                      ? [
+                          parsedSetupDraft.category?.trim(),
+                          parsedSetupDraft.subGenre?.trim(),
+                          parsedSetupDraft.targetAudience?.trim()
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "类型、细分类型、目标受众会显示在这里。"
+                      : "类型、细分类型、目标受众会显示在这里。"}
+                  </p>
+                  <p>
+                    {parsedSetupDraft
+                      ? [
+                          parsedSetupDraft.narrativeView?.trim(),
+                          parsedSetupDraft.storyStructure?.trim(),
+                          parsedSetupDraft.lengthCategory
+                            ? readLengthCategoryLabel(parsedSetupDraft.lengthCategory)
+                            : ""
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "视角、结构、篇幅类型会显示在这里。"
+                      : "视角、结构、篇幅类型会显示在这里。"}
+                  </p>
+                  <p>
+                    {parsedSetupDraft?.premise?.trim() || "一句话故事核心会显示在这里。"}
                   </p>
                 </div>
 
                 <div className="note-box">
-                  <p className="field-label">人物草稿</p>
+                  <p className="field-label">规划信息预览</p>
                   <p>
-                    {parsedSetupDraft && parsedSetupDraft.characterSeeds.length > 0
-                      ? parsedSetupDraft.characterSeeds
-                          .slice(0, MAX_CHARACTER_SEEDS)
-                          .map((item) => item.name)
-                          .filter(Boolean)
-                          .join(" / ")
-                      : "暂无人物种子，解析后会显示可回填的人物摘要。"}
+                    {parsedSetupDraft?.plannedChapterCount
+                      ? `${parsedSetupDraft.plannedChapterCount} 章`
+                      : "预计总章数：待解析"}
+                  </p>
+                  <p>
+                    {parsedSetupDraft?.targetWordsPerChapter
+                      ? `约 ${parsedSetupDraft.targetWordsPerChapter} 字 / 章`
+                      : "每章目标字数：待解析"}
+                  </p>
+                  <p>这些会回填到你下面的篇幅规划表单里。</p>
+                </div>
+              </div>
+
+              <div className="creation-grid creation-grid-2">
+                <div className="note-box">
+                  <p className="field-label">设定信息预览</p>
+                  <p>{parsedSetupDraft?.worldSeed?.trim() || "世界观 / 初始设定会显示在这里。"}</p>
+                  <p>{parsedSetupDraft?.styleGoal?.trim() || "语气 / 文风目标会显示在这里。"}</p>
+                </div>
+
+                <div className="note-box">
+                  <p className="field-label">解析提示</p>
+                  <p>
+                    {parsedSetupDraft?.guessedFields?.length
+                      ? `AI 推测补全：${parsedSetupDraft.guessedFields.join(" / ")}`
+                      : "AI 推测补全：暂无"}
+                  </p>
+                  <p>
+                    {parsedSetupDraft?.missingFields?.length
+                      ? `还缺信息：${parsedSetupDraft.missingFields.join(" / ")}`
+                      : "还缺信息：暂无"}
+                  </p>
+                  <p>
+                    {parsedSetupDraft?.confidenceNotes?.length
+                      ? `说明：${parsedSetupDraft.confidenceNotes.join(" / ")}`
+                      : "说明：暂无"}
                   </p>
                 </div>
+              </div>
+
+              <div className="note-box">
+                <p className="field-label">人物解析</p>
+                {parsedSetupDraft && parsedSetupDraft.characterSeeds.length > 0 ? (
+                  <div className="creation-seed-grid">
+                    {parsedSetupDraft.characterSeeds.map((item, index) => (
+                      <article key={`${item.name}-${index}`} className="seed-card">
+                        <div className="seed-card-header">
+                          <strong>{item.name || `人物 ${index + 1}`}</strong>
+                        </div>
+                        <p>{item.role?.trim() || "暂未识别角色定位"}</p>
+                        <p>{item.summary?.trim() || "暂未识别人设简述"}</p>
+                        <p>
+                          {[
+                            item.factionName?.trim() ? `势力：${item.factionName.trim()}` : "",
+                            item.locationName?.trim() ? `地点：${item.locationName.trim()}` : ""
+                          ]
+                            .filter(Boolean)
+                            .join(" / ") || "暂未识别势力或地点"}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p>暂无人物种子，解析后会把识别到的人物逐个列出来。</p>
+                )}
+              </div>
+
+              <div className="note-box">
+                <p className="field-label">图谱预览</p>
+                <p>
+                  {parsedSetupDraft?.factionSeeds?.length
+                    ? `势力：${parsedSetupDraft.factionSeeds
+                        .map((item) => item.name?.trim())
+                        .filter(Boolean)
+                        .join(" / ")}`
+                    : "势力：暂无单独识别结果"}
+                </p>
+                <p>
+                  {parsedSetupDraft?.locationSeeds?.length
+                    ? `地点：${parsedSetupDraft.locationSeeds
+                        .map((item) => item.name?.trim())
+                        .filter(Boolean)
+                        .join(" / ")}`
+                    : "地点：暂无单独识别结果"}
+                </p>
+                {parsedSetupDraft?.relationSeeds?.length ? (
+                  <>
+                    <p>已识别关系</p>
+                    <ul className="plain-list compact-list">
+                      {parsedSetupDraft.relationSeeds
+                        .map((item) => formatRelationPreview(item))
+                        .filter(Boolean)
+                        .map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p>关系：暂无单独识别结果</p>
+                )}
+                <p>点击应用后，这些势力、地点、关系会一起带进初始图谱。</p>
+              </div>
+
+              <div className="note-box">
+                <p>应用全部不会覆盖文风参考，样文部分仍建议你手动挑选和填写。</p>
               </div>
 
               <div className="tag-list">
@@ -953,7 +1205,6 @@ export function NovelCreationForm({
                   type="button"
                   className="button-secondary"
                   onClick={handleAddCharacterSeed}
-                  disabled={form.characterSeeds.length >= MAX_CHARACTER_SEEDS}
                 >
                   新增人物
                 </button>
