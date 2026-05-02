@@ -16,11 +16,11 @@ describe("NewNovelPage", () => {
     const markup = renderToStaticMarkup(await NewNovelPage());
 
     expect(markup).toContain("第 2 步");
-    expect(markup).toContain("先把这本书建起来");
+    expect(markup).toContain("先建这本书");
     expect(markup).toContain("第 1 步");
     expect(markup).toContain("导入你的想法");
-    expect(markup).toContain("先把书建起来，后面再慢慢补细节。");
-    expect(markup).toContain("先填核心信息，就能进入作品开始写。");
+    expect(markup).toContain("先填最少的。");
+    expect(markup).toContain("能开始写就够了。");
     expect(markup).toContain("快速新建");
     expect(markup).toContain("我想继续补细节");
     expect(markup).toContain("创建这本书");

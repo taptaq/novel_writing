@@ -254,9 +254,9 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
       <section className="panel style-manager-panel">
         <div className="panel-header">
           <div>
-            <p className="panel-eyebrow">文风页</p>
+            <p className="panel-eyebrow">文风</p>
             <h2>让 AI 更像这本书</h2>
-            <p className="assist-meta">这里用来整理这本书的语气、句子感觉和参考样文。</p>
+            <p className="assist-meta">这里放文风规则和参考样文。</p>
           </div>
           <div className="stats-inline">
             <span className="stat-pill">{profile.status}</span>
@@ -267,7 +267,7 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
         <div className="style-manager-grid">
           <article className="info-card style-panel-block">
             <div className="title-row">
-              <h3>这本书现在的语气规则</h3>
+              <h3>这本书的文风规则</h3>
             </div>
 
             <label className="field">
@@ -299,7 +299,7 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
                 disabled={requestState.savingProfile}
                 onClick={handleProfileSave}
               >
-                {requestState.savingProfile ? "保存中..." : "保存这些规则"}
+                {requestState.savingProfile ? "保存中..." : "保存规则"}
               </button>
               <button
                 type="button"
@@ -307,7 +307,7 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
                 disabled={requestState.rebuilding}
                 onClick={handleRebuild}
               >
-                {requestState.rebuilding ? "整理中..." : "重新整理规则"}
+                {requestState.rebuilding ? "整理中..." : "重新整理"}
               </button>
             </div>
           </article>
@@ -318,7 +318,7 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
         <div className="panel-header">
           <div>
             <p className="panel-eyebrow">投喂样文</p>
-            <h2>上传你认可的文字</h2>
+            <h2>贴你想要的文字风格</h2>
           </div>
         </div>
 
@@ -349,10 +349,10 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
 
           <article className="info-card style-panel-block">
             <div className="title-row">
-              <h3>新增样文</h3>
+              <h3>添加样文</h3>
             </div>
 
-            <p className="assist-meta">把你认可的文字贴进来，AI 会更容易学到这本书该有的感觉。</p>
+            <p className="assist-meta">贴一段你想要的感觉，AI 更容易学会。</p>
 
             <div className="stack-column">
               <div className="creation-grid creation-grid-2">
@@ -406,7 +406,7 @@ export function NovelStyleManager({ novelSlug, initialData }: NovelStyleManagerP
                   disabled={requestState.addingSample}
                   onClick={handleSampleSubmit}
                 >
-                  {requestState.addingSample ? "保存中..." : "加入这段样文"}
+                  {requestState.addingSample ? "保存中..." : "加入样文"}
                 </button>
               </div>
             </div>

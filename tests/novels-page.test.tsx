@@ -80,7 +80,7 @@ vi.mock("@/lib/repositories/novels", () => ({
   getNovelSummariesWithSource: vi.fn(async () => mockResponse)
 }));
 
-const summaryFallback = "建议先回到项目总览，看看系统推荐你下一步先做什么。";
+const summaryFallback = "先回总览，再接着写。";
 
 type ParsedElement = {
   attributes: Record<string, string>;
@@ -159,9 +159,9 @@ describe("NovelsPage", () => {
     expect(divs.some((div) => div.classes.includes("library-header"))).toBe(true);
     expect(divs.some((div) => div.classes.includes("library-list"))).toBe(true);
     expect(pageText).toContain("第 1 步");
-    expect(pageText).toContain("先选一本，继续往下写");
-    expect(pageText).toContain("先回到你要推进的那一本，系统会告诉你下一步先做什么。");
-    expect(pageText).toContain("没有作品也没关系，直接建一本就行。");
+    expect(pageText).toContain("选一本到回去写");
+    expect(pageText).toContain("点开就能继续。");
+    expect(pageText).toContain("没有也没关系，直接新建。");
     expect(
       anchors.some((anchor) => anchor.attributes.href === "/novels/new" && anchor.text.includes("新建一本书"))
     ).toBe(true);
@@ -202,9 +202,9 @@ describe("NovelsPage", () => {
     const anchors = parseElements(markup, "a");
     const projectCards = anchors.filter((anchor) => anchor.classes.includes("project-entry-card"));
 
-    expect(pageText).toContain("先看一个示例，熟悉完整流程");
-    expect(pageText).toContain("这里是演示用的作品，只是带你看流程。看完后再正式开书。");
-    expect(pageText).toContain("示例项目不会写进你的真实作品。");
+    expect(pageText).toContain("先看一个示例");
+    expect(pageText).toContain("这里只是带你看流程。");
+    expect(pageText).toContain("示例不会写进你的真实作品。");
     expect(pageText).not.toContain("你还没有自己的项目");
     expect(pageText).not.toContain("先选一本继续");
     expect(projectCards).toHaveLength(demoNovels.length);

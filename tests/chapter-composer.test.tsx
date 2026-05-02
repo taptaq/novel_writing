@@ -609,25 +609,29 @@ describe("ChapterComposer", () => {
     expect(options).toEqual(["自动", "Kimi", "GLM", "Mimo", "MiniMax", "Qwen", "DeepSeek", "系统兜底"]);
   });
 
-  it("lists writing skill presets as direct chapter-level actions", () => {
+  it("shows only four primary writing actions before the more-help section", () => {
     const markup = renderToStaticMarkup(
       <ChapterComposer novelSlug="mist-harbor" chapterSlug="bell-before-dawn" data={chapterData} />
     );
-    const buttons = parseElements(markup, "button").map((element) => element.text);
-
-    expect(buttons).toEqual(
-      expect.arrayContaining([
-      "不使用",
-      "帮我想清楚怎么写",
-      "整理本章要写什么",
-      "整理设定和资料",
-      "去掉 AI 味",
-      "规划整本书",
-      "拆章节大纲",
-      "继续写一小段",
-      "帮我改顺改好"
-      ])
+    const text = normalizeWhitespace(stripTags(markup));
+    const primaryActionBlock = markup.slice(
+      markup.indexOf("常用动作"),
+      markup.indexOf("更多帮助")
     );
+
+    expect(text).toContain("常用动作");
+    expect(text).toContain("更多帮助");
+    expect(primaryActionBlock).toContain("整理本章要写什么");
+    expect(primaryActionBlock).toContain("去掉 AI 味");
+    expect(primaryActionBlock).toContain("继续写一小段");
+    expect(primaryActionBlock).toContain("帮我改顺改好");
+    expect(primaryActionBlock).not.toContain("帮我想清楚怎么写");
+    expect(primaryActionBlock).not.toContain("整理设定和资料");
+    expect(primaryActionBlock).not.toContain("规划整本书");
+    expect(primaryActionBlock).not.toContain("拆章节大纲");
+    expect(text).toContain("怎么用 AI 更省事");
+    expect(text).toContain("普通任务先用轻一点的模型，真的复杂了再切高配。");
+    expect(text).toContain("AI 生成的内容先当草稿看，确认能用再正式采纳。");
   });
 
   it("shows a lightweight style-profile hint with style constraints enabled by default", () => {
@@ -668,7 +672,7 @@ describe("ChapterComposer", () => {
     expect(markup).toContain("chapter-editor-aside");
     expect(text).toContain("章节目录");
     expect(text).toContain("新建章节");
-    expect(text).toContain("可以随时切换到别的章节查看或继续写。");
+    expect(text).toContain("随时切到别章。");
     expect(text).toContain("收起章节栏");
     expect(text).toContain("第三声钟响前");
     expect(text).toContain("潮痕未退");
@@ -677,7 +681,7 @@ describe("ChapterComposer", () => {
     expect(text).toContain("查看版本变化");
     expect(text).toContain("查看相关设定");
     expect(text).toContain("先写正文就行。卡住了，再用右边这些辅助功能。");
-    expect(text).toContain("先点一次右边按钮，这里就会出现候选稿。");
+    expect(text).toContain("点一次右边按钮，这里就会出现候选稿。");
   });
 
   it("shows a dedicated chapter audit desk with clear check targets", () => {

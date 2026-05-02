@@ -1,12 +1,15 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GraphWorkspace } from "@/components/graph-workspace";
 import { EntityGroup } from "@/components/entity-group";
-import { getNovelWorkspace } from "@/lib/repositories/novels";
+import { getNovelGraphData, getNovelWorkspace } from "@/lib/repositories/novels";
 
 export default async function WorldPage({ params }: { params: { novelSlug: string } }) {
-  const workspace = await getNovelWorkspace(params.novelSlug);
+  const [workspace, graph] = await Promise.all([
+    getNovelWorkspace(params.novelSlug),
+    getNovelGraphData(params.novelSlug)
+  ]);
 
-  if (!workspace) {
+  if (!workspace || !graph) {
     notFound();
   }
 
@@ -20,13 +23,16 @@ export default async function WorldPage({ params }: { params: { novelSlug: strin
         <div className="panel-header">
           <div>
             <p className="panel-eyebrow">设定页</p>
-            <h2>人物、势力、地点都在这里</h2>
-            <p className="assist-meta">忘了谁是谁、谁跟谁有关，就回这里补和查。</p>
+            <h2>设定与关系</h2>
+            <p className="assist-meta">忘了谁是谁，就回这里看。</p>
           </div>
-          <Link href={`/novels/${workspace.novel.slug}/graph`} className="button-primary">
-            去看关系图
-          </Link>
         </div>
+
+        <div className="tag-list">
+          <span className="tag">设定卡</span>
+          <span className="tag">关系图</span>
+        </div>
+        <p className="assist-meta">一页看完设定和关系。</p>
       </section>
 
       <section className="dashboard-grid entity-group-grid">
@@ -34,6 +40,18 @@ export default async function WorldPage({ params }: { params: { novelSlug: strin
         <EntityGroup title="势力" items={factions} />
         <EntityGroup title="地点" items={locations} />
       </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="panel-eyebrow">关系视图</p>
+            <h2>关系图</h2>
+            <p className="assist-meta">想看关系，直接看下面。</p>
+          </div>
+        </div>
+      </section>
+
+      <GraphWorkspace graph={graph} />
     </div>
   );
 }

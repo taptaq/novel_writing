@@ -7,10 +7,10 @@ export default function NotFound() {
         <div className="panel-header">
           <div>
             <p className="panel-eyebrow">未找到内容</p>
-            <h1>这里还没有准备好</h1>
+            <h1>这里还没有内容</h1>
           </div>
         </div>
-        <p className="hero-text">你可以先回到作品列表，或者先去示例里看看完整流程。</p>
+        <p className="hero-text">先回作品列表，或者先看示例。</p>
         <div className="action-row">
           <Link className="button-primary" href="/novels">
             回作品列表

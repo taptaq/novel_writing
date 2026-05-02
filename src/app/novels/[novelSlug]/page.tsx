@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getLengthFeatureHints } from "@/lib/novel-length";
 import { getRecommendedNextStep } from "@/lib/novel-workflow";
 import { getNovelWorkspace } from "@/lib/repositories/novels";
-import { getLengthFeatureHints, getNovelLengthProfile } from "@/lib/novel-length";
 
 export default async function NovelOverviewPage({ params }: { params: { novelSlug: string } }) {
   const workspace = await getNovelWorkspace(params.novelSlug);
@@ -11,8 +11,6 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
     notFound();
   }
 
-  const lengthProfile = getNovelLengthProfile(workspace.novel.lengthCategory);
-  const lengthHints = getLengthFeatureHints(workspace.novel.lengthCategory);
   const firstChapter = workspace.chapters[0];
   const nextStep = getRecommendedNextStep({
     chapterCount: workspace.novel.chapterCount,
@@ -20,6 +18,9 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
     outlineCount: workspace.outlines.length,
     firstChapterSlug: firstChapter?.slug
   });
+  const structureCount = workspace.outlines.length + workspace.foreshadows.length;
+  const keyCharacters = workspace.entities.filter((entity) => entity.type === "CHARACTER").length;
+  const lengthHints = getLengthFeatureHints(workspace.novel.lengthCategory);
 
   return (
     <div className="page-stack">
@@ -31,7 +32,7 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
             <div>
               <h2>{nextStep.title}</h2>
               <p className="hero-text">{nextStep.description}</p>
-              <p className="assist-meta">不用一次把所有模块都做完，先推进当前最关键的一步。</p>
+              <p className="assist-meta">先做这一件就行。</p>
             </div>
             <div className="title-row">
               <Link href={`/novels/${workspace.novel.slug}${nextStep.href}`} className="button-primary">
@@ -61,145 +62,116 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="panel-eyebrow">篇幅规划</p>
-              <h2>{lengthProfile.label}</h2>
+              <p className="panel-eyebrow">主动作 1</p>
+              <h2>继续写作</h2>
+              <p className="assist-meta">从最近一章接着写。</p>
             </div>
           </div>
 
-          <article className="info-card">
-            <p>{lengthProfile.description}</p>
-            <p>{lengthProfile.structureHint}</p>
-            <div className="tag-list">
-              <span className="tag">建议 {lengthProfile.defaultChapterCount} 章</span>
-              <span className="tag">单章 {lengthProfile.defaultWordsPerChapter} 字</span>
+          <div className="stack-column">
+            {workspace.chapters.length > 0 ? (
+              <Link
+                href={`/novels/${workspace.novel.slug}/chapters/${firstChapter?.slug}`}
+                className="row-card row-card-spread"
+              >
+                <div>
+                  <h3>{firstChapter?.title}</h3>
+                  <p>{firstChapter?.summary ?? firstChapter?.excerpt ?? "先回到你刚刚写到的位置。"}</p>
+                </div>
+                <div className="stats-inline">
+                  <span className="stat-pill">{firstChapter?.wordCount ?? 0} 字</span>
+                  <span className="stat-pill">{firstChapter?.status ?? "DRAFT"}</span>
+                </div>
+              </Link>
+            ) : (
+              <p className="empty-state">还没开始写，先定第一章。</p>
+            )}
+            <Link
+              href={
+                firstChapter
+                  ? `/novels/${workspace.novel.slug}/chapters/${firstChapter.slug}`
+                  : `/novels/${workspace.novel.slug}/outline`
+              }
+              className="button-secondary"
+            >
+              {firstChapter ? "继续这一章" : "去定第一章"}
+            </Link>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-eyebrow">主动作 2</p>
+              <h2>补人物和关系</h2>
+              <p className="assist-meta">先把主角、对手和关系补上。</p>
             </div>
-          </article>
+          </div>
+
+          <div className="stack-column">
+            <article className="info-card">
+              <p>
+                {workspace.entities.length > 0
+                  ? `现在已经整理了 ${workspace.entities.length} 条设定，其中人物 ${keyCharacters} 条。`
+                  : "还没补关键人物，先写主角、对手和关系就够了。"}
+              </p>
+              <div className="tag-list">
+                <span className="tag">人物 {keyCharacters} 条</span>
+                <span className="tag">
+                  势力 {workspace.entities.filter((entity) => entity.type === "FACTION").length} 条
+                </span>
+                <span className="tag">
+                  地点 {workspace.entities.filter((entity) => entity.type === "LOCATION").length} 条
+                </span>
+              </div>
+            </article>
+            <Link href={`/novels/${workspace.novel.slug}/world`} className="button-secondary">
+              去补人物和关系
+            </Link>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-eyebrow">主动作 3</p>
+              <h2>看结构和伏笔</h2>
+              <p className="assist-meta">不知道怎么写，就先顺一下。</p>
+            </div>
+          </div>
+
+          <div className="stack-column">
+            <article className="info-card">
+              <p>
+                {structureCount > 0
+                  ? `现在已经有 ${workspace.outlines.length} 条结构和 ${workspace.foreshadows.length} 条伏笔。`
+                  : "还没顺后续走向，先列开头几章和关键埋点就够了。"}
+              </p>
+              <div className="tag-list">
+                <span className="tag">大纲 {workspace.outlines.length} 条</span>
+                <span className="tag">伏笔 {workspace.foreshadows.length} 条</span>
+              </div>
+            </article>
+            <Link href={`/novels/${workspace.novel.slug}/outline`} className="button-secondary">
+              去看结构和伏笔
+            </Link>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-eyebrow">轻提示</p>
+              <h2>这本书现在更该盯什么</h2>
+              <p className="assist-meta">先看最有用的就行。</p>
+            </div>
+          </div>
 
           <ul className="plain-list compact-list">
             {lengthHints.map((hint) => (
               <li key={hint}>{hint}</li>
             ))}
           </ul>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-eyebrow">章节进度</p>
-              <h2>写作推进</h2>
-              <p className="assist-meta">想直接继续写，就从这里进。</p>
-            </div>
-          </div>
-
-          <div className="stack-column">
-            {workspace.chapters.length > 0 ? (
-              workspace.chapters.map((chapter) => (
-                <Link
-                  key={chapter.id}
-                  href={`/novels/${workspace.novel.slug}/chapters/${chapter.slug}`}
-                  className="row-card row-card-spread"
-                >
-                  <div>
-                    <h3>{chapter.title}</h3>
-                    <p>{chapter.summary ?? chapter.excerpt}</p>
-                  </div>
-                  <div className="stats-inline">
-                    <span className="stat-pill">{chapter.wordCount} 字</span>
-                    <span className="stat-pill">{chapter.status}</span>
-                  </div>
-                </Link>
-              ))
-            ) : (
-              <p className="empty-state">还没开始写章节，先去结构页把第一章定下来。</p>
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-eyebrow">设定摘要</p>
-              <h2>当前有效实体</h2>
-              <p className="assist-meta">忘了人物、地点、关系时，回这里看。</p>
-            </div>
-          </div>
-
-          <div className="stack-column">
-            {workspace.entities.length > 0 ? (
-              workspace.entities.map((entity) => (
-                <article key={entity.id} className="info-card">
-                  <div className="title-row">
-                    <h3>{entity.name}</h3>
-                    <span className="tag">{entity.type}</span>
-                  </div>
-                  <p>{entity.summary}</p>
-                  <div className="tag-list">
-                    {entity.tags.map((tag) => (
-                      <span key={tag} className="tag">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">还没补关键人物，先写主角、对手和关系就够了。</p>
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-eyebrow">结构状态</p>
-              <h2>大纲与伏笔</h2>
-              <p className="assist-meta">不知道下一章写什么时，先来这里顺一下。</p>
-            </div>
-          </div>
-
-          <div className="stack-column">
-            {workspace.outlines.length > 0 ? (
-              workspace.outlines.map((item) => (
-                <article key={item.id} className="outline-item">
-                  <span className="outline-depth" style={{ width: `${item.depth * 18 + 18}px` }} />
-                  <div>
-                    <h3>{item.title}</h3>
-                    <p>{item.summary}</p>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">还没顺后续走向，先列开头几章就够了。</p>
-            )}
-          </div>
-
-          <div className="divider" />
-
-          <ul className="plain-list compact-list">
-            {workspace.foreshadows.length > 0 ? (
-              workspace.foreshadows.map((item) => (
-                <li key={item.id}>
-                  <strong>{item.hook}</strong>
-                  {item.plannedPayoff ? ` · ${item.plannedPayoff}` : ""}
-                </li>
-              ))
-            ) : (
-              <li>还没记伏笔，后面想到关键埋点再补也行。</li>
-            )}
-          </ul>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-eyebrow">文风维护</p>
-              <h2>文风资产</h2>
-              <p className="assist-meta">想让 AI 更像这本书的语气，就来这里补样文和规则。</p>
-            </div>
-            <Link href={`/novels/${workspace.novel.slug}/style`} className="button-secondary">
-              打开文风页
-            </Link>
-          </div>
         </section>
       </div>
     </div>

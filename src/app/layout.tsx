@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <span className="brand-mark">HD</span>
               <div>
                 <strong>{env.appName}</strong>
-                <p>AI 共创，不抢作者笔</p>
+                <p>AI 帮你写，不抢你定</p>
               </div>
             </Link>
 
@@ -36,11 +36,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </nav>
 
             <div className="sidebar-card">
-              <p className="panel-eyebrow">新手先记这 3 句</p>
+              <p className="panel-eyebrow">先记这 3 句</p>
               <ul className="plain-list compact-list">
-                <li>AI 只给建议稿，不会直接替你定稿。</li>
-                <li>先把书建起来，再慢慢补细节。</li>
-                <li>先保人设、逻辑和节奏，再谈修辞。</li>
+                <li>先把书建起来。</li>
+                <li>先保前后顺。</li>
+                <li>AI 给草稿，你来定。</li>
               </ul>
             </div>
           </aside>

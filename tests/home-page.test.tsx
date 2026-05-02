@@ -114,10 +114,10 @@ describe("HomePage", () => {
     const anchors = parseAnchors(markup);
 
     expect(pageText).toContain("第 1 步");
-    expect(pageText).toContain("写小说，不用一下子想清全部");
-    expect(pageText).toContain("你可以先看示例，先理解流程；也可以直接新建一本，边写边补。");
+    expect(pageText).toContain("先把故事写出来");
+    expect(pageText).toContain("先看示例，或者直接开一本。");
     expect(pageText).toContain("继续我的书");
-    expect(pageText).toContain("直接新建一本");
+    expect(pageText).toContain("新建一本");
     expect(pageText).toContain("我的作品");
     expect(pageText).not.toContain("能力标签");
     expect(pageText).not.toContain("结构建议");
@@ -126,7 +126,7 @@ describe("HomePage", () => {
     expect(pageText).not.toContain("风格护栏");
 
     const primaryCta = anchors.find((anchor) => anchor.text === "继续我的书");
-    const secondaryCta = anchors.find((anchor) => anchor.text === "直接新建一本");
+    const secondaryCta = anchors.find((anchor) => anchor.text === "新建一本");
     expect(primaryCta?.href).toBe("/novels/latest-real-project");
     expect(secondaryCta?.href).toBe("/novels/new");
 
@@ -159,12 +159,12 @@ describe("HomePage", () => {
     const pageText = normalizeWhitespace(stripTags(markup));
     const anchors = parseAnchors(markup);
     const primaryCta = anchors.find((anchor) => anchor.text === "先看示例");
-    const secondaryCta = anchors.find((anchor) => anchor.text === "直接新建一本");
+    const secondaryCta = anchors.find((anchor) => anchor.text === "新建一本");
 
     expect(pageText).toContain("先看示例");
     expect(pageText).toContain("示例项目");
-    expect(pageText).toContain("你可以先看示例，先理解流程；也可以直接新建一本，边写边补。");
-    expect(pageText).toContain("这是演示流程，不会写进你的真实作品。");
+    expect(pageText).toContain("先看示例，或者直接开一本。");
+    expect(pageText).toContain("这是示例，不会写进你的书。");
     expect(primaryCta?.href).toBe("/novels");
     expect(secondaryCta?.href).toBe("/novels/new");
     expect(primaryCta?.href).not.toBe(secondaryCta?.href);

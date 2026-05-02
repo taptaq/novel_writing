@@ -240,6 +240,51 @@ function readLengthCategoryLabel(value?: NovelLengthCategory) {
   return getNovelLengthProfile(value ?? "MEDIUM").label;
 }
 
+const parseHintFieldAliases: Record<string, string> = {
+  category: "分类",
+  subGenre: "细分类型",
+  targetAudience: "目标受众",
+  premise: "一句话故事核心",
+  narrativeView: "叙事视角",
+  storyStructure: "故事结构",
+  lengthCategory: "篇幅类型",
+  plannedChapterCount: "预计总章数",
+  targetWordsPerChapter: "每章目标字数",
+  worldSeed: "世界观",
+  styleGoal: "文风目标",
+  styleSamples: "文风参考样文",
+  factionSeeds: "势力",
+  locationSeeds: "地点",
+  characterSeeds: "人物",
+  relationSeeds: "关系"
+};
+
+const parseHintNoteAliases: Record<string, string> = {
+  "length inferred from setup complexity": "篇幅是按设定复杂度推测的",
+  "targetAudience inferred from source": "目标受众为推测",
+  "no explanation provided": "未提供说明。"
+};
+
+function normalizeParseHintFieldLabel(value: string) {
+  const trimmed = value.trim();
+  return parseHintFieldAliases[trimmed] ?? trimmed;
+}
+
+function normalizeParseHintNote(value: string) {
+  const trimmed = value.trim();
+  return parseHintNoteAliases[trimmed] ?? trimmed;
+}
+
+function buildParseHintLine(
+  label: string,
+  values: string[] | undefined,
+  normalizeValue: (value: string) => string,
+  emptyValue: string
+) {
+  const normalized = values?.map(normalizeValue).filter(Boolean) ?? [];
+  return `${label}：${normalized.length > 0 ? normalized.join(" / ") : emptyValue}`;
+}
+
 function normalizeGraphEntitySeeds(seeds: GraphEntitySeedInput[]) {
   const seen = new Set<string>();
 
@@ -696,13 +741,13 @@ export function NovelCreationForm({
   return (
     <form className="creation-form" onSubmit={handleSubmit}>
       <div className="note-box">
-        <p>先填最关键的信息就能开始写，其他都可以后面补。</p>
+        <p>先填最少的，后面再补。</p>
       </div>
 
       <section className="creation-section">
         <div className="creation-section-heading">
           <h2>第 1 步 / 导入你的想法</h2>
-          <p>你可以自己直接填，也可以先让 AI 帮你读设定。</p>
+          <p>自己填，或让 AI 先整理。</p>
         </div>
 
         <div className="creation-grid creation-grid-2">
@@ -719,7 +764,7 @@ export function NovelCreationForm({
                 }}
               />
             </div>
-            <p>自己直接填核心信息，马上开始，不等 AI 解析。</p>
+            <p>自己填，马上开始。</p>
           </label>
 
           <label className="seed-card">
@@ -735,21 +780,21 @@ export function NovelCreationForm({
                 }}
               />
             </div>
-            <p>把设定贴进来或传文件，让 AI 帮你先读设定，再回填表单。</p>
+            <p>贴设定，让 AI 先理一遍。</p>
           </label>
         </div>
 
         {creationMode === "quick" ? (
           <div className="note-box">
             <p className="field-label">当前方式</p>
-            <p>你现在走的是快速新建，直接往下填就可以。</p>
+            <p>现在是快速新建，往下填就行。</p>
           </div>
         ) : (
           <article className="seed-card">
             <div className="creation-section-heading">
               <div>
-                <h3>AI 帮你先读设定</h3>
-                <p>把设定贴进来或传文件，先出一版回填草稿，再由你决定用哪些。</p>
+                <h3>AI 先整理设定</h3>
+                <p>贴设定或传文件，先出一版草稿。</p>
               </div>
               <button
                 type="button"
@@ -764,7 +809,7 @@ export function NovelCreationForm({
             {!canParse ? (
               <div className="note-box">
                 <p className="field-label">开始前</p>
-                <p>先贴设定内容或上传文件，再开始解析。</p>
+                <p>先贴内容，再解析。</p>
               </div>
             ) : null}
 
@@ -777,7 +822,7 @@ export function NovelCreationForm({
                   setSetupSourceText(event.target.value);
                   setParsedSetupDraft(null);
                 }}
-                placeholder="粘贴故事设定、人物介绍、世界观说明等内容，解析后会先生成预览草稿。"
+                placeholder="贴故事设定、人物介绍、世界观说明。"
               />
             </label>
 
@@ -795,7 +840,7 @@ export function NovelCreationForm({
               <div className="field">
                 <span className="field-label">当前来源</span>
                 <div className="note-box">
-                  <p>{setupSourceFileName || "未上传文件，当前将使用上方粘贴文本。"}</p>
+                  <p>{setupSourceFileName || "还没传文件，先用上面这段文字。"}</p>
                 </div>
               </div>
             </div>
@@ -850,7 +895,7 @@ export function NovelCreationForm({
                       ? `约 ${parsedSetupDraft.targetWordsPerChapter} 字 / 章`
                       : "每章目标字数：待解析"}
                   </p>
-                  <p>这些会回填到你下面的篇幅规划表单里。</p>
+                  <p>这些会填回下面的规划项。</p>
                 </div>
               </div>
 
@@ -864,19 +909,28 @@ export function NovelCreationForm({
                 <div className="note-box">
                   <p className="field-label">解析提示</p>
                   <p>
-                    {parsedSetupDraft?.guessedFields?.length
-                      ? `AI 推测补全：${parsedSetupDraft.guessedFields.join(" / ")}`
-                      : "AI 推测补全：暂无"}
+                    {buildParseHintLine(
+                      "AI 推测补全",
+                      parsedSetupDraft?.guessedFields,
+                      normalizeParseHintFieldLabel,
+                      "暂无"
+                    )}
                   </p>
                   <p>
-                    {parsedSetupDraft?.missingFields?.length
-                      ? `还缺信息：${parsedSetupDraft.missingFields.join(" / ")}`
-                      : "还缺信息：暂无"}
+                    {buildParseHintLine(
+                      "还缺信息",
+                      parsedSetupDraft?.missingFields,
+                      normalizeParseHintFieldLabel,
+                      "暂无"
+                    )}
                   </p>
                   <p>
-                    {parsedSetupDraft?.confidenceNotes?.length
-                      ? `说明：${parsedSetupDraft.confidenceNotes.join(" / ")}`
-                      : "说明：暂无"}
+                    {buildParseHintLine(
+                      "说明",
+                      parsedSetupDraft?.confidenceNotes,
+                      normalizeParseHintNote,
+                      "暂无"
+                    )}
                   </p>
                 </div>
               </div>
@@ -941,11 +995,11 @@ export function NovelCreationForm({
                 ) : (
                   <p>关系：暂无单独识别结果</p>
                 )}
-                <p>点击应用后，这些势力、地点、关系会一起带进初始图谱。</p>
+                <p>点应用后，这些会一起带进初始关系图。</p>
               </div>
 
               <div className="note-box">
-                <p>应用全部不会覆盖文风参考，样文部分仍建议你手动挑选和填写。</p>
+                <p>应用全部不会覆盖文风参考。</p>
               </div>
 
               <div className="tag-list">
@@ -973,13 +1027,13 @@ export function NovelCreationForm({
 
       <section className="creation-section">
         <div className="creation-section-heading">
-          <h2>第 2 步 / 先填这些就够了</h2>
-          <p>这一步填完，就能正式进入作品开始写。</p>
+          <h2>第 2 步 / 先填这些</h2>
+          <p>填完就能开始写。</p>
         </div>
 
         <div className="note-box">
           <p className="field-label">核心信息</p>
-          <p>书名、类型、细分类型、目标受众、叙事视角、故事结构、篇幅类型、一句话故事核心。</p>
+          <p>书名、类型、篇幅和一句话设定。</p>
         </div>
 
         <div className="creation-grid creation-grid-3">
@@ -1041,7 +1095,7 @@ export function NovelCreationForm({
 
           <label className="field">
             <span className="field-label">故事结构</span>
-            <span className="field-helper">比如三幕式、起承转合。不确定就先默认。</span>
+            <span className="field-helper">不确定就先默认。</span>
             <select
               className="text-input"
               value={form.storyStructure}
@@ -1057,7 +1111,7 @@ export function NovelCreationForm({
 
           <label className="field">
             <span className="field-label">篇幅类型</span>
-            <span className="field-helper">短篇、中篇、长篇会影响默认建议和后续功能重点。</span>
+            <span className="field-helper">会影响默认建议。</span>
             <select
               className="text-input"
               value={form.lengthCategory}
@@ -1074,7 +1128,7 @@ export function NovelCreationForm({
 
         <label className="field">
           <span className="field-label">一句话故事核心</span>
-          <span className="field-helper">用一句话说清：这本书主要在讲什么。</span>
+          <span className="field-helper">用一句话说清这本书在讲什么。</span>
           <textarea
             required
             className="form-textarea"
@@ -1086,14 +1140,14 @@ export function NovelCreationForm({
 
       <section className="creation-section">
         <div className="creation-section-heading">
-          <h2>第 3 步 / 这些现在不填也可以</h2>
-          <p>这些都是加分项，不影响你先把书建起来。</p>
+          <h2>第 3 步 / 想补再补</h2>
+          <p>这些先空着也可以。</p>
         </div>
 
         <div className="note-box">
           <p className="field-label">扩展内容</p>
           <p>
-            篇幅建议、世界观 / 初始设定、语气 / 文风目标、人物种子、文风参考。现在先不填，也能直接创建。
+            篇幅建议、世界观、文风目标、人物种子、文风参考。现在不填也能创建。
           </p>
         </div>
 
@@ -1101,8 +1155,8 @@ export function NovelCreationForm({
           <article className="seed-card">
             <div className="creation-section-heading">
               <div>
-                <h3>先把书建起来也可以</h3>
-                <p>这一步先收起来也没关系，后面要补人物、文风和世界观时再展开。</p>
+                <h3>先创建也可以</h3>
+                <p>后面再补人物、文风和世界观。</p>
               </div>
               <button
                 type="button"

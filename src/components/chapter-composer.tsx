@@ -8,7 +8,11 @@ import {
   type ModelSelection,
   type WritingAssistResponse
 } from "@/lib/ai/types";
-import { writingSkillPresets, type WritingSkillPresetId } from "@/lib/novel-writing-skills";
+import {
+  writingSkillPresets,
+  type WritingSkillPreset,
+  type WritingSkillPresetId
+} from "@/lib/novel-writing-skills";
 import { estimateWordCount } from "@/lib/text/word-count";
 import type { ChapterEditorData } from "@/types/domain";
 
@@ -79,6 +83,22 @@ const primaryActionLabels: Record<AssistMode, string> = {
   outline: "帮我看看有没有跑偏",
   audit: "帮我检查前后有没有冲突"
 };
+
+const writingAssistTips = [
+  "普通任务先用轻一点的模型，真的复杂了再切高配。",
+  "AI 生成的内容先当草稿看，确认能用再正式采纳。",
+  "优先查设定卡、章节摘要和伏笔，不要把整本正文一股脑塞进去。"
+];
+
+const primarySkillPresetIds: WritingSkillPresetId[] = [
+  "chapter-runner",
+  "voice-keeper",
+  "crucible-writer",
+  "crucible-editor"
+];
+
+const primarySkillPresets = writingSkillPresets.filter((item) => primarySkillPresetIds.includes(item.id));
+const secondarySkillPresets = writingSkillPresets.filter((item) => !primarySkillPresetIds.includes(item.id));
 
 type StyleProfileUiState =
   | {
@@ -203,6 +223,18 @@ function buildDiffParagraphs(previousText: string, currentText: string) {
   })).filter((item) => item.before !== item.after);
 }
 
+function buildSelectedSkillSummary(
+  skillPresetId: WritingSkillPresetId | "none",
+  primaryPresets: WritingSkillPreset[],
+  secondaryPresets: WritingSkillPreset[]
+) {
+  if (skillPresetId === "none") {
+    return undefined;
+  }
+
+  return [...primaryPresets, ...secondaryPresets].find((item) => item.id === skillPresetId);
+}
+
 function formatAuditRecordTime(value: string) {
   return value.slice(0, 16).replace("T", " ");
 }
@@ -264,7 +296,7 @@ export function ChapterComposer({
   const isDirty = draft !== lastSavedDraft;
   const openForeshadows = data.foreshadows.filter((item) => item.status === "OPEN");
   const styleProfileUiState = getStyleProfileUiState(mode, data.styleProfile);
-  const selectedSkillPreset = writingSkillPresets.find((item) => item.id === skillPresetId);
+  const selectedSkillPreset = buildSelectedSkillSummary(skillPresetId, primarySkillPresets, secondarySkillPresets);
   const chapterGoal = data.chapter.sceneGoal ?? data.memory?.currentFocus ?? "先补一句这章要推进什么，AI 给建议会更准。";
   const latestManualVersion = data.versions.find((item) => item.source === "manual");
   const diffParagraphs = buildDiffParagraphs(lastSavedDraft, draft);
@@ -622,7 +654,7 @@ export function ChapterComposer({
           <div>
             <p className="panel-eyebrow">写作导航</p>
             <h2>{isSidebarCollapsed ? "章节栏" : "章节目录"}</h2>
-            {isSidebarCollapsed ? null : <p className="assist-meta">可以随时切换到别的章节查看或继续写。</p>}
+            {isSidebarCollapsed ? null : <p className="assist-meta">随时切到别章。</p>}
           </div>
           <button className="button-secondary" type="button" onClick={toggleSidebar}>
             {isSidebarCollapsed ? "展开章节栏" : "收起章节栏"}
@@ -759,13 +791,13 @@ export function ChapterComposer({
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="panel-eyebrow">写完一章就来这里</p>
+              <p className="panel-eyebrow">写完看这里</p>
               <h2>章节审核台</h2>
             </div>
           </div>
 
           <div className="note-box">
-            <p>这次会重点检查四件事，帮你快速看出这一章还缺什么。</p>
+            <p>这次只看四件事。</p>
             <ul className="plain-list compact-list">
               <li>前后连贯</li>
               <li>人物和设定</li>
@@ -822,7 +854,7 @@ export function ChapterComposer({
               ) : null}
             </div>
           ) : (
-            <p className="empty-state">写完这一章后，点一次按钮，这里就会给你一份审稿提醒。</p>
+            <p className="empty-state">写完后点一次，这里就会出提醒。</p>
           )}
 
           {auditHistory.length > 0 ? (
@@ -868,7 +900,7 @@ export function ChapterComposer({
                 </ul>
               </div>
             ) : (
-              <p className="empty-state">这是前几章的位置。等你写出更多章节后，这里会自动整理简要回顾。</p>
+              <p className="empty-state">写出更多章节后，这里会自动回顾前文。</p>
             )}
 
             {data.memory.activeStoryLines.length > 0 ? (
@@ -912,7 +944,7 @@ export function ChapterComposer({
               ))}
             </div>
           ) : (
-            <p className="empty-state">还没有关键人物，先补主角、对手和关键关系就够用了。</p>
+            <p className="empty-state">还没关键人物，先补主角和对手就够了。</p>
           )}
 
           {openForeshadows.length > 0 ? (
@@ -922,7 +954,7 @@ export function ChapterComposer({
               ))}
             </ul>
           ) : (
-            <p className="empty-state">目前没有未回收伏笔，先直接推进这一章也可以。</p>
+            <p className="empty-state">目前没有挂着的伏笔，先继续写也可以。</p>
           )}
         </section>
 
@@ -952,7 +984,7 @@ export function ChapterComposer({
           </label>
 
           <div className="field" role="group" aria-label="写作技能">
-            <span className="field-label">常用写作技能</span>
+            <span className="field-label">常用动作</span>
             <div className="skill-choice-grid">
               <button
                 type="button"
@@ -962,7 +994,7 @@ export function ChapterComposer({
               >
                 不使用
               </button>
-              {writingSkillPresets.map((item) => (
+              {primarySkillPresets.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -975,6 +1007,34 @@ export function ChapterComposer({
               ))}
             </div>
           </div>
+
+          <details className="details-panel">
+            <summary className="details-summary">更多帮助</summary>
+            <div className="details-body stack-column">
+              <div className="field">
+                <span className="field-label">怎么用 AI 更省事</span>
+                <ul className="plain-list compact-list">
+                  {writingAssistTips.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <p className="field-helper">这些不常用，卡住时再点。</p>
+              <div className="skill-choice-grid">
+                {secondarySkillPresets.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={skillPresetId === item.id ? "skill-choice skill-choice-active" : "skill-choice"}
+                    onClick={() => applySkillPreset(item.id)}
+                    aria-pressed={skillPresetId === item.id}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </details>
 
           {selectedSkillPreset ? (
             <div className="skill-preset-card">
@@ -1009,6 +1069,7 @@ export function ChapterComposer({
               <label className="field">
                 <span className="field-label">模型选择</span>
                 <span className="field-helper">不确定选哪个，就用自动。</span>
+                
                 <select
                   className="text-input"
                   name="modelSelection"
@@ -1131,7 +1192,7 @@ export function ChapterComposer({
               ) : null}
             </div>
           ) : (
-            <p className="empty-state">先点一次右边按钮，这里就会出现候选稿。</p>
+            <p className="empty-state">点一次右边按钮，这里就会出现候选稿。</p>
           )}
         </section>
       </aside>

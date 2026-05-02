@@ -5,13 +5,13 @@ import { getNovelLengthProfile } from "@/lib/novel-length";
 export default async function NovelsPage() {
   const { novels, source } = await getNovelSummariesWithSource();
   const isDemoFallback = source === "demo";
-  const title = isDemoFallback ? "先看一个示例，熟悉完整流程" : "先选一本，继续往下写";
+  const title = isDemoFallback ? "先看一个示例" : "选一本到回去写";
   const summary = isDemoFallback
-    ? "这里是演示用的作品，只是带你看流程。看完后再正式开书。"
-    : "先回到你要推进的那一本，系统会告诉你下一步先做什么。";
+    ? "这里只是带你看流程。"
+    : "点开就能继续。";
   const note = isDemoFallback
-    ? "示例项目不会写进你的真实作品。"
-    : "没有作品也没关系，直接建一本就行。";
+    ? "示例不会写进你的真实作品。"
+    : "没有也没关系，直接新建。";
   const novelBasePath = isDemoFallback ? "/demo" : "/novels";
 
   return (
@@ -33,8 +33,8 @@ export default async function NovelsPage() {
         <div className="library-list">
           {novels.map((novel) => {
             const cardSummary = isDemoFallback
-              ? novel.summary ?? novel.premise ?? "先打开这个示例项目，熟悉一下从设定到写作的流程。"
-              : novel.summary ?? novel.premise ?? "建议先回到项目总览，看看系统推荐你下一步先做什么。";
+              ? novel.summary ?? novel.premise ?? "先打开看看流程。"
+              : novel.summary ?? novel.premise ?? "先回总览，再接着写。";
             const lengthProfile = getNovelLengthProfile(novel.lengthCategory);
 
             return (

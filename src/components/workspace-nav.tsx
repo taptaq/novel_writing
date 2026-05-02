@@ -15,6 +15,9 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const writingHref = firstChapterSlug
+    ? `${basePath}/${novelSlug}/chapters/${firstChapterSlug}`
+    : `${basePath}/${novelSlug}/outline`;
   const items = [
     {
       href: `${basePath}/${novelSlug}`,
@@ -22,9 +25,9 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
       title: "先看现在最该做什么"
     },
     {
-      href: `${basePath}/${novelSlug}/outline`,
-      label: "结构",
-      title: "不知道后面怎么写时，先来这里"
+      href: writingHref,
+      label: "写作",
+      title: firstChapterSlug ? "直接开始写这一章" : "还没开写，先把第一章定下来"
     },
     {
       href: `${basePath}/${novelSlug}/world`,
@@ -32,27 +35,10 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
       title: "补人物、地点、关系都在这里"
     },
     {
-      href: `${basePath}/${novelSlug}/graph`,
-      label: "图谱",
-      title: "快速看清人物关系"
-    },
-    {
       href: `${basePath}/${novelSlug}/style`,
-      label: "文风",
-      title: "让 AI 更贴近这本书的感觉"
-    },
-    {
-      href: `${basePath}/${novelSlug}/insights`,
-      label: "AI 策略",
-      title: "不知道怎么用 AI 更省事时看这里"
-    },
-    firstChapterSlug
-      ? {
-          href: `${basePath}/${novelSlug}/chapters/${firstChapterSlug}`,
-          label: "写作",
-          title: "直接开始写这一章"
-        }
-      : null
+      label: "更多",
+      title: "文风和其他低频功能先收在这里"
+    }
   ].filter(Boolean) as Array<{ href: string; label: string; title: string }>;
   const normalizedPathname = normalizePath(pathname);
 
@@ -75,7 +61,12 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
         const isWriting = item.label === "写作";
         const isActive =
           normalizedPathname === normalizedHref ||
-          (isWriting && normalizedPathname.startsWith(`${basePath}/${novelSlug}/chapters/`));
+          (isWriting &&
+            (normalizedPathname.startsWith(`${basePath}/${novelSlug}/chapters/`) ||
+              (!firstChapterSlug && normalizedPathname === `${basePath}/${novelSlug}/outline`))) ||
+          (item.label === "更多" &&
+            (normalizedPathname === `${basePath}/${novelSlug}/style` ||
+              normalizedPathname === `${basePath}/${novelSlug}/insights`));
         const isNavigating = isPending && pendingHref === item.href;
 
         return (

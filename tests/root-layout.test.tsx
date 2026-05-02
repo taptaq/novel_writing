@@ -31,9 +31,9 @@ describe("RootLayout", () => {
     expect(markup).toContain("开始页");
     expect(markup).toContain("我的作品");
     expect(markup).toContain("先看示例");
-    expect(markup).toContain("新手先记这 3 句");
-    expect(markup).toContain("先把书建起来，再慢慢补细节。");
-    expect(markup).toContain("先保人设、逻辑和节奏，再谈修辞。");
-    expect(markup).toContain("AI 只给建议稿，不会直接替你定稿。");
+    expect(markup).toContain("先记这 3 句");
+    expect(markup).toContain("先把书建起来。");
+    expect(markup).toContain("先保前后顺。");
+    expect(markup).toContain("AI 给草稿，你来定。");
   });
 });
