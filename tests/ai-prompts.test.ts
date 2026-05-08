@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSetupChineseRewritePrompt,
   buildSetupParsingPrompt,
   buildChapterMemoryBlock,
   buildStyleProfileBlock,
@@ -100,12 +101,14 @@ describe("buildChapterMemoryBlock", () => {
 });
 
 describe("buildSetupParsingPrompt", () => {
-  it("describes a single top-level JSON object with concrete field types", () => {
+  it("forces Chinese user-facing values while keeping a strict JSON schema", () => {
     const prompt = buildSetupParsingPrompt("主角是钟楼修理匠，故事偏中篇悬疑。");
 
-    expect(prompt).toContain("parse novel setup/spec text into a structured creation draft");
-    expect(prompt).toContain("JSON only");
-    expect(prompt).toContain("Return exactly one top-level JSON object with this shape");
+    expect(prompt).toContain("你要把小说设定说明解析成结构化建书草稿");
+    expect(prompt).toContain("只返回一个 JSON 对象");
+    expect(prompt).toContain("除 guessedFields 和 missingFields 里的字段名外");
+    expect(prompt).toContain("所有给用户看的字段值都必须使用简体中文");
+    expect(prompt).toContain("不要输出英文句子");
     expect(prompt).toContain("\"title\": string");
     expect(prompt).toContain("\"lengthCategory\": \"SHORT\" | \"MEDIUM\" | \"LONG\"");
     expect(prompt).toContain("\"plannedChapterCount\"?: positive integer");
@@ -115,19 +118,40 @@ describe("buildSetupParsingPrompt", () => {
     expect(prompt).toContain("\"factionSeeds\": GraphEntitySeed[]");
     expect(prompt).toContain("\"locationSeeds\": GraphEntitySeed[]");
     expect(prompt).toContain("\"relationSeeds\": RelationSeed[]");
-    expect(prompt).toContain("Use empty strings or empty arrays when a field is not provided");
-    expect(prompt).toContain("Do not wrap the object in markdown, prose, or code fences");
+    expect(prompt).toContain("如果某个字段没有信息，使用空字符串或空数组");
+    expect(prompt).toContain("不要输出 markdown、解释文字或代码块");
     expect(prompt).toContain("StyleSample = {\"title\"?: string, \"content\": string, \"note\"?: string}");
     expect(prompt).toContain("CharacterSeed = {\"name\": string, \"role\"?: string, \"summary\"?: string, \"factionName\"?: string, \"locationName\"?: string}");
     expect(prompt).toContain("GraphEntitySeed = {\"name\": string, \"summary\"?: string}");
     expect(prompt).toContain("RelationSeed = {\"sourceName\": string, \"targetName\": string, \"type\": \"ALLY\" | \"ENEMY\" | \"FAMILY\" | \"MENTOR\" | \"SUBORDINATE\" | \"OTHER\" | \"MEMBER_OF\" | \"ROOTED_IN\"");
     expect(prompt).toContain("guessedFields");
     expect(prompt).toContain("missingFields");
-    expect(prompt).toContain("Do not limit valid character seeds, faction seeds, location seeds, or relation seeds");
-    expect(prompt).toContain("at most 3 valid style samples");
+    expect(prompt).toContain("不要限制 characterSeeds、factionSeeds、locationSeeds、relationSeeds 的有效数量");
+    expect(prompt).toContain("最多返回 3 段有效 styleSamples");
+    expect(prompt).toContain("同一个名称只能归属于一种图谱实体类型");
+    expect(prompt).toContain("不能同时出现在 characterSeeds、factionSeeds、locationSeeds");
+    expect(prompt).toContain("如果同名实体既像地点又像势力，优先依据角色引用和关系类型判断");
     expect(prompt).toContain("SHORT");
     expect(prompt).toContain("MEDIUM");
     expect(prompt).toContain("LONG");
     expect(prompt).toContain("主角是钟楼修理匠，故事偏中篇悬疑。");
+  });
+});
+
+describe("buildSetupChineseRewritePrompt", () => {
+  it("asks the model to rewrite visible values into simplified Chinese without changing schema", () => {
+    const prompt = buildSetupChineseRewritePrompt({
+      title: "Tide Ashes",
+      premise: "A clockmaker apprentice gets pulled into an old port disappearance case.",
+      guessedFields: ["targetAudience"],
+      missingFields: ["styleSamples"]
+    });
+
+    expect(prompt).toContain("把下面这个建书草稿 JSON 改写成简体中文");
+    expect(prompt).toContain("不要改变 JSON 结构");
+    expect(prompt).toContain("guessedFields 和 missingFields 里的字段名保持英文不变");
+    expect(prompt).toContain("不要保留英文句子");
+    expect(prompt).toContain("\"title\":\"Tide Ashes\"");
+    expect(prompt).toContain("\"guessedFields\":[\"targetAudience\"]");
   });
 });

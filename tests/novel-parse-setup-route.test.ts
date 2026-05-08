@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { buildSetupParsingPrompt, callRoutedJsonModel } = vi.hoisted(() => ({
+const { buildSetupParsingPrompt, buildSetupChineseRewritePrompt, callRoutedJsonModel } = vi.hoisted(() => ({
   buildSetupParsingPrompt: vi.fn(),
+  buildSetupChineseRewritePrompt: vi.fn(),
   callRoutedJsonModel: vi.fn()
 }));
 
 vi.mock("@/lib/ai/prompts", () => ({
-  buildSetupParsingPrompt
+  buildSetupParsingPrompt,
+  buildSetupChineseRewritePrompt
 }));
 
 vi.mock("@/lib/ai/router", () => ({
@@ -27,8 +29,11 @@ function buildRequest(body: Record<string, unknown>) {
 
 describe("POST /api/novels/parse-setup", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    buildSetupParsingPrompt.mockReset();
+    buildSetupChineseRewritePrompt.mockReset();
+    callRoutedJsonModel.mockReset();
     buildSetupParsingPrompt.mockReturnValue("mocked parsing prompt");
+    buildSetupChineseRewritePrompt.mockReturnValue("mocked chinese rewrite prompt");
     callRoutedJsonModel.mockResolvedValue({
       payload: {
         title: "  潮汐灰烬  ",
@@ -177,11 +182,103 @@ describe("POST /api/novels/parse-setup", () => {
       messages: [
         {
           role: "system",
-          content: "You extract structured novel setup data. Return valid JSON only."
+          content:
+            "你是中文小说设定解析助手。只返回合法 JSON，不要输出英文说明，用户可见字段值必须使用简体中文。"
         },
         {
           role: "user",
           content: "mocked parsing prompt"
+        }
+      ],
+      modelSelection: "auto"
+    });
+  });
+
+  it("runs a Chinese rewrite pass when the first draft contains obvious English sentences", async () => {
+    callRoutedJsonModel
+      .mockResolvedValueOnce({
+        payload: {
+          title: "Tide Ashes",
+          category: "Mystery",
+          subGenre: "Port Case",
+          targetAudience: "Adult readers",
+          premise: "A clockmaker apprentice gets pulled into an old port disappearance case.",
+          narrativeView: "Third person limited",
+          storyStructure: "Three-act structure",
+          lengthCategory: "MEDIUM",
+          plannedChapterCount: 18,
+          targetWordsPerChapter: 3000,
+          worldSeed: "The old port is covered in salt fog and broken tide clocks.",
+          styleGoal: "Restrained and cold.",
+          styleSamples: [],
+          factionSeeds: [],
+          locationSeeds: [],
+          characterSeeds: [],
+          relationSeeds: [],
+          guessedFields: ["targetAudience"],
+          missingFields: ["styleSamples"],
+          confidenceNotes: ["Target audience inferred from source."]
+        }
+      })
+      .mockResolvedValueOnce({
+        payload: {
+          title: "潮汐灰烬",
+          category: "悬疑",
+          subGenre: "港口谜案",
+          targetAudience: "成年读者",
+          premise: "一次停摆的潮汐钟，让修钟学徒卷进旧港失踪案。",
+          narrativeView: "第三人称限知",
+          storyStructure: "三幕式",
+          lengthCategory: "MEDIUM",
+          plannedChapterCount: 18,
+          targetWordsPerChapter: 3000,
+          worldSeed: "盐雾旧港与失灵潮汐钟构成故事舞台。",
+          styleGoal: "克制、冷感、细节推进。",
+          styleSamples: [],
+          factionSeeds: [],
+          locationSeeds: [],
+          characterSeeds: [],
+          relationSeeds: [],
+          guessedFields: ["targetAudience"],
+          missingFields: ["styleSamples"],
+          confidenceNotes: ["目标受众为推测"]
+        }
+      });
+
+    const response = await POST(
+      buildRequest({
+        sourceText: "这是一个足够长的设定说明文本，用来验证英文结果会触发一次中文化整理。"
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      draft: expect.objectContaining({
+        title: "潮汐灰烬",
+        premise: "一次停摆的潮汐钟，让修钟学徒卷进旧港失踪案。",
+        worldSeed: "盐雾旧港与失灵潮汐钟构成故事舞台。",
+        confidenceNotes: ["目标受众为推测"]
+      }),
+      promptPreview: "mocked parsing prompt"
+    });
+
+    expect(buildSetupChineseRewritePrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Tide Ashes",
+        premise: "A clockmaker apprentice gets pulled into an old port disappearance case."
+      })
+    );
+    expect(callRoutedJsonModel).toHaveBeenCalledTimes(2);
+    expect(callRoutedJsonModel).toHaveBeenNthCalledWith(2, {
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是中文小说设定整理助手。你只能把已有 JSON 草稿改写为简体中文，不能补充新事实，不能改变结构。只返回合法 JSON。"
+        },
+        {
+          role: "user",
+          content: "mocked chinese rewrite prompt"
         }
       ],
       modelSelection: "auto"

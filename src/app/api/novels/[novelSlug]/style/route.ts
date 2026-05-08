@@ -5,10 +5,11 @@ import {
   getNovelStyleWorkspace,
   updateNovelStyleProfile
 } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export async function GET(_: Request, { params }: { params: { novelSlug: string } }) {
   try {
-    const workspace = await getNovelStyleWorkspace(params.novelSlug);
+    const workspace = await getNovelStyleWorkspace(decodeRouteParam(params.novelSlug));
 
     if (!workspace) {
       return NextResponse.json({ message: "Novel not found." }, { status: 404 });
@@ -42,6 +43,7 @@ export async function GET(_: Request, { params }: { params: { novelSlug: string 
 
 export async function PATCH(request: Request, { params }: { params: { novelSlug: string } }) {
   try {
+    const novelSlug = decodeRouteParam(params.novelSlug);
     let payload: unknown;
 
     try {
@@ -55,7 +57,7 @@ export async function PATCH(request: Request, { params }: { params: { novelSlug:
       );
     }
 
-    const profile = await updateNovelStyleProfile(params.novelSlug, payload);
+    const profile = await updateNovelStyleProfile(novelSlug, payload);
 
     return NextResponse.json({ profile });
   } catch (error) {

@@ -33,6 +33,7 @@ type SaveDraftSource = "manual" | "autosave";
 
 type SaveDraftResponse = {
   chapter: {
+    title: string;
     slug: string;
     updatedAt: string;
     wordCount: number;
@@ -46,6 +47,7 @@ type SaveDraftResponse = {
 };
 
 type SaveDraftRequest = {
+  title: string;
   plainText: string;
   source: SaveDraftSource;
   expectedUpdatedAt?: string;
@@ -176,6 +178,44 @@ function getSaveStateLabel(isDirty: boolean, saveRequestState: SaveRequestState)
   return "已保存";
 }
 
+function formatTwoDigits(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function isSameLocalDate(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+export function formatLastSavedAtLabel(value: string, now: Date = new Date()) {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  const timeLabel = `${formatTwoDigits(parsed.getHours())}:${formatTwoDigits(parsed.getMinutes())}`;
+
+  if (isSameLocalDate(parsed, now)) {
+    return `今天 ${timeLabel}`;
+  }
+
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+
+  if (isSameLocalDate(parsed, yesterday)) {
+    return `昨天 ${timeLabel}`;
+  }
+
+  if (parsed.getFullYear() === now.getFullYear()) {
+    return `${parsed.getMonth() + 1}月${parsed.getDate()}日 ${timeLabel}`;
+  }
+
+  return `${parsed.getFullYear()}年${parsed.getMonth() + 1}月${parsed.getDate()}日 ${timeLabel}`;
+}
+
 function getSidebarCollapsedFromStorage(storage: Pick<Storage, "getItem"> | undefined) {
   if (!storage) {
     return false;
@@ -202,6 +242,10 @@ function setSidebarCollapsedInStorage(storage: Pick<Storage, "setItem"> | undefi
 
 function buildChapterPath(basePath: string, novelSlug: string, nextChapterSlug: string) {
   return `${basePath}/${novelSlug}/chapters/${nextChapterSlug}`;
+}
+
+function hasMeaningfulText(value: string) {
+  return value.trim().length > 0;
 }
 
 function getPlainErrorMessage(issue: unknown, fallback: string) {
@@ -258,9 +302,13 @@ export function ChapterComposer({
   basePath = "/novels"
 }: ChapterComposerProps) {
   const isDemoFallback = data.source === "demo";
+  const initialTitle = data.chapter.title;
   const initialDraft = data.chapter.content ?? "";
+  const [chapterTitle, setChapterTitle] = useState(initialTitle);
+  const [lastSavedTitle, setLastSavedTitle] = useState(initialTitle);
   const [draft, setDraft] = useState(initialDraft);
   const [lastSavedDraft, setLastSavedDraft] = useState(initialDraft);
+  const [chapters, setChapters] = useState(data.chapters);
   const [saveRequestState, setSaveRequestState] = useState<SaveRequestState>("saved");
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const [chapterActionFeedback, setChapterActionFeedback] = useState<string | null>(null);
@@ -283,7 +331,10 @@ export function ChapterComposer({
   const [auditHistory, setAuditHistory] = useState(data.auditHistory);
   const [isPending, startTransition] = useTransition();
   const deferredDraft = useDeferredValue(draft);
+  const deferredTitle = useDeferredValue(chapterTitle);
   const draftRef = useRef(draft);
+  const titleRef = useRef(chapterTitle);
+  const lastSavedTitleRef = useRef(lastSavedTitle);
   const lastSavedDraftRef = useRef(lastSavedDraft);
   const lastServerUpdatedAtRef = useRef<string | null>(data.chapter.updatedAt ?? data.versions[0]?.createdAt ?? null);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
@@ -293,7 +344,7 @@ export function ChapterComposer({
   const isSwitchingChapterRef = useRef(false);
 
   const liveWordCount = useMemo(() => estimateWordCount(deferredDraft), [deferredDraft]);
-  const isDirty = draft !== lastSavedDraft;
+  const isDirty = draft !== lastSavedDraft || chapterTitle !== lastSavedTitle;
   const openForeshadows = data.foreshadows.filter((item) => item.status === "OPEN");
   const styleProfileUiState = getStyleProfileUiState(mode, data.styleProfile);
   const selectedSkillPreset = buildSelectedSkillSummary(skillPresetId, primarySkillPresets, secondarySkillPresets);
@@ -302,10 +353,20 @@ export function ChapterComposer({
   const diffParagraphs = buildDiffParagraphs(lastSavedDraft, draft);
   const diffWordDelta = estimateWordCount(draft) - estimateWordCount(lastSavedDraft);
   const isAuditStale = auditResult !== null && lastAuditedDraft !== draft;
+  const lastSavedAtLabel = lastSavedAt ? formatLastSavedAtLabel(lastSavedAt) : null;
+  const hasDraftContent = hasMeaningfulText(draft);
 
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  useEffect(() => {
+    titleRef.current = chapterTitle;
+  }, [chapterTitle]);
+
+  useEffect(() => {
+    lastSavedTitleRef.current = lastSavedTitle;
+  }, [lastSavedTitle]);
 
   useEffect(() => {
     lastSavedDraftRef.current = lastSavedDraft;
@@ -331,7 +392,7 @@ export function ChapterComposer({
     return () => {
       globalThis.clearTimeout(timerId);
     };
-  }, [isDemoFallback, isDirty, saveRequestState, draft, novelSlug, chapterSlug]);
+  }, [isDemoFallback, isDirty, saveRequestState, draft, chapterTitle, novelSlug, chapterSlug]);
 
   function applySkillPreset(value: WritingSkillPresetId | "none") {
     setSkillPresetId(value);
@@ -346,9 +407,14 @@ export function ChapterComposer({
   }
 
   async function persistDraft(source: SaveDraftSource) {
-    const snapshot = draftRef.current;
+    const titleSnapshot = titleRef.current;
+    const draftSnapshot = draftRef.current;
+    const snapshot = JSON.stringify({
+      title: titleSnapshot,
+      plainText: draftSnapshot
+    });
 
-    if (snapshot === lastSavedDraftRef.current) {
+    if (titleSnapshot === lastSavedTitleRef.current && draftSnapshot === lastSavedDraftRef.current) {
       return true;
     }
 
@@ -365,8 +431,13 @@ export function ChapterComposer({
       await savePromiseRef.current;
     }
 
-    const nextSnapshot = draftRef.current;
-    if (nextSnapshot === lastSavedDraftRef.current) {
+    const nextTitle = titleRef.current;
+    const nextDraft = draftRef.current;
+    const nextSnapshot = JSON.stringify({
+      title: nextTitle,
+      plainText: nextDraft
+    });
+    if (nextTitle === lastSavedTitleRef.current && nextDraft === lastSavedDraftRef.current) {
       return true;
     }
 
@@ -375,8 +446,13 @@ export function ChapterComposer({
       setSaveFeedback(null);
 
       try {
+        if (nextTitle.trim().length === 0) {
+          throw new Error("章节标题不能为空。");
+        }
+
         const requestBody: SaveDraftRequest = {
-          plainText: nextSnapshot,
+          title: nextTitle,
+          plainText: nextDraft,
           source
         };
 
@@ -401,8 +477,23 @@ export function ChapterComposer({
         }
 
         const payload = (await response.json()) as SaveDraftResponse;
-        setLastSavedDraft(nextSnapshot);
-        lastSavedDraftRef.current = nextSnapshot;
+        const savedTitle = payload.chapter.title;
+        setChapterTitle(savedTitle);
+        setLastSavedTitle(savedTitle);
+        lastSavedTitleRef.current = savedTitle;
+        setLastSavedDraft(nextDraft);
+        lastSavedDraftRef.current = nextDraft;
+        setChapters((current) =>
+          current.map((chapter) =>
+            chapter.slug === chapterSlug
+              ? {
+                  ...chapter,
+                  title: savedTitle,
+                  wordCount: payload.chapter.wordCount
+                }
+              : chapter
+          )
+        );
         lastServerUpdatedAtRef.current = payload.chapter.updatedAt;
         setLastSavedAt(payload.chapter.updatedAt);
         setSaveRequestState("saved");
@@ -438,6 +529,19 @@ export function ChapterComposer({
 
   function handleDraftChange(value: string) {
     setDraft(value);
+    setChapterActionFeedback(null);
+    setAuditError(null);
+    if (saveRequestState === "error") {
+      setSaveRequestState("idle");
+      setSaveFeedback(null);
+    }
+  }
+
+  function handleTitleChange(value: string) {
+    setChapterTitle(value);
+    setChapters((current) =>
+      current.map((chapter) => (chapter.slug === chapterSlug ? { ...chapter, title: value } : chapter))
+    );
     setChapterActionFeedback(null);
     if (saveRequestState === "error") {
       setSaveRequestState("idle");
@@ -560,6 +664,11 @@ export function ChapterComposer({
   }
 
   async function runChapterAudit() {
+    if (!hasMeaningfulText(draftRef.current)) {
+      setAuditError("先写点正文，再保存并审核本章。");
+      return;
+    }
+
     setIsAuditRunning(true);
     setAuditError(null);
 
@@ -673,7 +782,7 @@ export function ChapterComposer({
             </button>
 
             <div className="chapter-nav-list" aria-label="章节目录">
-              {data.chapters.map((chapter) => {
+              {chapters.map((chapter) => {
                 const isActive = chapter.slug === chapterSlug;
 
                 return (
@@ -705,7 +814,15 @@ export function ChapterComposer({
         <div className="panel-header">
           <div>
             <p className="panel-eyebrow">正文编辑</p>
-            <h2>{data.chapter.title}</h2>
+            <label className="field">
+              <span className="field-label">章节标题</span>
+              <input
+                className="text-input chapter-title-input"
+                value={chapterTitle}
+                onInput={(event) => handleTitleChange((event.target as HTMLInputElement).value)}
+                placeholder="先给这一章起个标题"
+              />
+            </label>
           </div>
           <div className="stats-inline">
             <span className="stat-pill">章节字数 {liveWordCount}</span>
@@ -729,7 +846,12 @@ export function ChapterComposer({
             <button className="button-primary" type="button" onClick={handleManualSave}>
               立即保存
             </button>
-            <button className="button-secondary" type="button" onClick={() => void runChapterAudit()}>
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => void runChapterAudit()}
+              disabled={isAuditRunning || !hasDraftContent}
+            >
               {isAuditRunning ? "审核中..." : "保存并审核本章"}
             </button>
             <button className="button-secondary" type="button" onClick={() => setActiveDialog("diff")}>
@@ -753,7 +875,7 @@ export function ChapterComposer({
               }
             />
             <span>{getSaveStateLabel(isDirty, saveRequestState)}</span>
-            {lastSavedAt ? <span className="save-status-meta">最近一次保存 {lastSavedAt}</span> : null}
+            {lastSavedAtLabel ? <span className="save-status-meta">最近一次保存 {lastSavedAtLabel}</span> : null}
           </div>
 
           {saveFeedback ? <p className="save-feedback">{saveFeedback}</p> : null}
@@ -806,7 +928,12 @@ export function ChapterComposer({
             </ul>
           </div>
 
-          <button className="button-primary" type="button" onClick={() => void runChapterAudit()} disabled={isAuditRunning}>
+          <button
+            className="button-primary"
+            type="button"
+            onClick={() => void runChapterAudit()}
+            disabled={isAuditRunning || !hasDraftContent}
+          >
             {isAuditRunning ? "审核中..." : "保存并审核本章"}
           </button>
 

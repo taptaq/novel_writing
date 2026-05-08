@@ -666,6 +666,7 @@ describe("novel style repository", () => {
       updatedAt: new Date("2026-04-29T09:58:00.000Z")
     });
     mocks.tx.chapter.findFirst.mockResolvedValueOnce({
+      title: "雨夜回声",
       slug: "cold-rain",
       wordCount: 17,
       updatedAt: new Date("2026-04-29T10:00:00.000Z")
@@ -678,6 +679,7 @@ describe("novel style repository", () => {
     });
 
     const result = await saveChapterDraft("glass-city", "cold-rain", {
+      title: "  雨夜回声  ",
       plainText: "  她没有立刻回头。\n\n只是把灯绳又绕了一圈。  ",
       source: "manual",
       note: "  章节备注  "
@@ -699,6 +701,7 @@ describe("novel style repository", () => {
         id: "chapter-1"
       },
       data: {
+        title: "雨夜回声",
         plainText: "  她没有立刻回头。\n\n只是把灯绳又绕了一圈。  ",
         content: [
           {
@@ -720,6 +723,7 @@ describe("novel style repository", () => {
         id: "chapter-1"
       },
       select: {
+        title: true,
         slug: true,
         wordCount: true,
         updatedAt: true
@@ -752,6 +756,7 @@ describe("novel style repository", () => {
     });
     expect(result).toEqual({
       chapter: {
+        title: "雨夜回声",
         slug: "cold-rain",
         wordCount: 17,
         updatedAt: "2026-04-29T10:00:00.000Z"
@@ -781,12 +786,14 @@ describe("novel style repository", () => {
       updatedAt: new Date("2026-04-29T10:00:00.000Z")
     });
     mocks.tx.chapter.findFirst.mockResolvedValueOnce({
+      title: "第三声钟响前",
       slug: "cold-rain",
       wordCount: 9,
       updatedAt: new Date("2026-04-29T10:05:00.000Z")
     });
 
     const result = await saveChapterDraft("glass-city", "cold-rain", {
+      title: "第三声钟响前",
       plainText: "  她没有立刻回头。  ",
       source: "autosave"
     });
@@ -794,6 +801,7 @@ describe("novel style repository", () => {
     expect(mocks.tx.chapterVersion.create).not.toHaveBeenCalled();
     expect(result).toEqual({
       chapter: {
+        title: "第三声钟响前",
         slug: "cold-rain",
         wordCount: 9,
         updatedAt: "2026-04-29T10:05:00.000Z"
@@ -805,6 +813,7 @@ describe("novel style repository", () => {
         id: "chapter-1"
       },
       select: {
+        title: true,
         slug: true,
         wordCount: true,
         updatedAt: true
@@ -925,6 +934,7 @@ describe("novel style repository", () => {
 
     await expect(
       saveChapterDraft("glass-city", "cold-rain", {
+        title: "第三声钟响前",
         plainText: "她没有立刻回头。",
         source: "autosave",
         expectedUpdatedAt: "2026-04-29T10:00:00.000Z"
@@ -939,6 +949,7 @@ describe("novel style repository", () => {
         updatedAt: new Date("2026-04-29T10:00:00.000Z")
       },
       data: {
+        title: "第三声钟响前",
         plainText: "她没有立刻回头。",
         content: [
           {

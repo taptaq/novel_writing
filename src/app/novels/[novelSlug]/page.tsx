@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { getLengthFeatureHints } from "@/lib/novel-length";
 import { getRecommendedNextStep } from "@/lib/novel-workflow";
 import { getNovelWorkspace } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export default async function NovelOverviewPage({ params }: { params: { novelSlug: string } }) {
-  const workspace = await getNovelWorkspace(params.novelSlug);
+  const novelSlug = decodeRouteParam(params.novelSlug);
+  const workspace = await getNovelWorkspace(novelSlug);
 
   if (!workspace) {
     notFound();
@@ -20,7 +22,11 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
   });
   const structureCount = workspace.outlines.length + workspace.foreshadows.length;
   const keyCharacters = workspace.entities.filter((entity) => entity.type === "CHARACTER").length;
+  const characterEntities = workspace.entities.filter((entity) => entity.type === "CHARACTER");
+  const factionEntities = workspace.entities.filter((entity) => entity.type === "FACTION");
+  const locationEntities = workspace.entities.filter((entity) => entity.type === "LOCATION");
   const lengthHints = getLengthFeatureHints(workspace.novel.lengthCategory);
+  const showStarterWorkspace = workspace.novel.chapterCount === 0;
 
   return (
     <div className="page-stack">
@@ -58,6 +64,128 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
         </div>
       </section>
 
+      {showStarterWorkspace ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-eyebrow">起步工作区</p>
+              <h2>先把这本书跑起来</h2>
+              <p className="assist-meta">先看现成设定，再把第一章定下来就能开始写。</p>
+            </div>
+          </div>
+
+          <div className="stack-column">
+            <article className="info-card">
+              <div className="title-row">
+                <div>
+                  <h3>第一章起步</h3>
+                  <p>还没开始写，先把开场场景和第一章目标定下来。</p>
+                </div>
+                <Link href={`/novels/${workspace.novel.slug}/write`} className="button-secondary">
+                  去写第一章
+                </Link>
+              </div>
+              <p>{workspace.novel.premise ?? "先用一句话确定这本书的开场冲突。"} </p>
+            </article>
+
+            <div className="dashboard-grid">
+              <section className="panel">
+                <div className="panel-header">
+                  <div>
+                    <p className="panel-eyebrow">人物</p>
+                    <h3>人物列表</h3>
+                  </div>
+                </div>
+                <div className="stack-column">
+                  {characterEntities.length > 0 ? (
+                    characterEntities.map((entity) => (
+                      <article key={entity.id} className="info-card">
+                        <div className="title-row">
+                          <h3>{entity.name}</h3>
+                          <span className="tag">{entity.type}</span>
+                        </div>
+                        <p>{entity.summary ?? "先记住这个人物的身份和当前作用。"}</p>
+                        <div className="tag-list">
+                          {entity.tags.map((tag) => (
+                            <span key={tag} className="tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="empty-state">还没补人物，先写主角和对手就够了。</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="panel">
+                <div className="panel-header">
+                  <div>
+                    <p className="panel-eyebrow">势力</p>
+                    <h3>势力列表</h3>
+                  </div>
+                </div>
+                <div className="stack-column">
+                  {factionEntities.length > 0 ? (
+                    factionEntities.map((entity) => (
+                      <article key={entity.id} className="info-card">
+                        <div className="title-row">
+                          <h3>{entity.name}</h3>
+                          <span className="tag">{entity.type}</span>
+                        </div>
+                        <p>{entity.summary ?? "先写最关键的几条势力关系就够了。"}</p>
+                        <div className="tag-list">
+                          {entity.tags.map((tag) => (
+                            <span key={tag} className="tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="empty-state">还没补内容，先写最关键的几条就够了。</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="panel">
+                <div className="panel-header">
+                  <div>
+                    <p className="panel-eyebrow">地点</p>
+                    <h3>地点列表</h3>
+                  </div>
+                </div>
+                <div className="stack-column">
+                  {locationEntities.length > 0 ? (
+                    locationEntities.map((entity) => (
+                      <article key={entity.id} className="info-card">
+                        <div className="title-row">
+                          <h3>{entity.name}</h3>
+                          <span className="tag">{entity.type}</span>
+                        </div>
+                        <p>{entity.summary ?? "先把故事最常用的地点记下来。"} </p>
+                        <div className="tag-list">
+                          {entity.tags.map((tag) => (
+                            <span key={tag} className="tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="empty-state">还没补地点，先记住第一章最常用的场景。</p>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="dashboard-grid">
         <section className="panel">
           <div className="panel-header">
@@ -90,11 +218,11 @@ export default async function NovelOverviewPage({ params }: { params: { novelSlu
               href={
                 firstChapter
                   ? `/novels/${workspace.novel.slug}/chapters/${firstChapter.slug}`
-                  : `/novels/${workspace.novel.slug}/outline`
+                  : `/novels/${workspace.novel.slug}/write`
               }
               className="button-secondary"
             >
-              {firstChapter ? "继续这一章" : "去定第一章"}
+              {firstChapter ? "继续这一章" : "开始第一章"}
             </Link>
           </div>
         </section>

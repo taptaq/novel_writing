@@ -7,6 +7,7 @@ import {
   detectSetupFileType,
   readSetupFileAsText
 } from "@/lib/file-text-extractor";
+import { novelCreationSchema } from "@/lib/novel-creation";
 import {
   getLengthFeatureHints,
   getNovelLengthProfile,
@@ -15,7 +16,9 @@ import {
 import type {
   CharacterSeedInput,
   GraphEntitySeedInput,
+  GraphEntityKind,
   NovelLengthCategory,
+  NovelCreationInput,
   ParsedSetupCharacterSeed,
   ParsedSetupDraft,
   RelationSeedInput
@@ -57,6 +60,15 @@ type ParsedSetupGraphDraft = {
   relationSeeds: RelationSeedInput[];
 };
 
+type NovelCreationSubmission = {
+  title: string;
+  category: string;
+  subGenre: string;
+  targetAudience: string;
+  premise: string;
+  styleSamples: Array<Pick<StyleSampleFormInput, "content">>;
+};
+
 const MIN_CHARACTER_SEEDS = 1;
 const MAX_STYLE_SAMPLES = 3;
 
@@ -87,13 +99,29 @@ export function removeCharacterSeed(
   return characterSeeds.filter((_, itemIndex) => itemIndex !== index);
 }
 
+export function createEmptyStyleSample(): StyleSampleFormInput {
+  return {
+    title: "",
+    content: "",
+    note: ""
+  };
+}
+
+export function createInitialStyleSamples(): StyleSampleFormInput[] {
+  return [createEmptyStyleSample()];
+}
+
+export function addStyleSample(styleSamples: StyleSampleFormInput[]): StyleSampleFormInput[] {
+  if (styleSamples.length >= MAX_STYLE_SAMPLES) {
+    return styleSamples;
+  }
+
+  return [...styleSamples, createEmptyStyleSample()];
+}
+
 const initialCharacterSeeds: CharacterSeedInput[] = createInitialCharacterSeeds();
 
-const initialStyleSamples: StyleSampleFormInput[] = Array.from({ length: MAX_STYLE_SAMPLES }, () => ({
-  title: "",
-  content: "",
-  note: ""
-}));
+const initialStyleSamples: StyleSampleFormInput[] = createInitialStyleSamples();
 
 export function createInitialParsedSetupDraft(): ParsedSetupDraft {
   return {
@@ -118,6 +146,13 @@ export function createInitialParsedGraphDraft(): ParsedSetupGraphDraft {
 
 export function canParseSetupSource(setupSourceText: string, setupSourceFileName: string): boolean {
   return setupSourceText.trim().length > 0 || setupSourceFileName.trim().length > 0;
+}
+
+export function getSetupSourceFieldState(isParsingSetup: boolean) {
+  return {
+    isTextInputDisabled: isParsingSetup,
+    isFileInputDisabled: isParsingSetup
+  };
 }
 
 const initialFormState: CreationFormState = {
@@ -189,6 +224,31 @@ function normalizeParsedCharacterSeed(seed?: Partial<ParsedSetupCharacterSeed>):
   };
 }
 
+export function validateNovelCreationSubmission(input: NovelCreationSubmission) {
+  const requiredFields = [
+    input.title,
+    input.category,
+    input.subGenre,
+    input.targetAudience,
+    input.premise
+  ];
+
+  if (requiredFields.some((value) => value.trim().length === 0)) {
+    return "书名、类型、细分类型、目标受众和一句话故事核心不能为空。";
+  }
+
+  const shortSample = input.styleSamples.find((sample) => {
+    const content = sample.content.trim();
+    return content.length > 0 && content.length < 20;
+  });
+
+  if (shortSample) {
+    return "参考样文至少需要 20 个字符。";
+  }
+
+  return null;
+}
+
 function normalizeGraphEntitySeedInput(seed?: Partial<GraphEntitySeedInput>): GraphEntitySeedInput {
   return {
     name: seed?.name?.trim() ?? "",
@@ -205,6 +265,99 @@ function normalizeRelationSeedInput(seed?: Partial<RelationSeedInput>): Relation
     remark: seed?.remark?.trim() ?? "",
     note: seed?.note?.trim() ?? ""
   };
+}
+
+function claimGraphEntityName(
+  claimedKinds: Map<string, GraphEntityKind>,
+  rawName: string | undefined,
+  kind: GraphEntityKind
+) {
+  const name = rawName?.trim() ?? "";
+
+  if (!name) {
+    return "";
+  }
+
+  const existingKind = claimedKinds.get(name);
+
+  if (existingKind && existingKind !== kind) {
+    return "";
+  }
+
+  claimedKinds.set(name, kind);
+  return name;
+}
+
+function isGraphRelationCompatible(
+  relation: Pick<RelationSeedInput, "sourceName" | "targetName" | "type">,
+  survivingKinds: Map<string, GraphEntityKind>
+) {
+  const sourceKind = survivingKinds.get(relation.sourceName);
+  const targetKind = survivingKinds.get(relation.targetName);
+
+  if (!sourceKind || !targetKind) {
+    return false;
+  }
+
+  if (relation.type === "MEMBER_OF") {
+    return sourceKind === "CHARACTER" && targetKind === "FACTION";
+  }
+
+  if (relation.type === "ROOTED_IN") {
+    return sourceKind === "CHARACTER" && targetKind === "LOCATION";
+  }
+
+  return true;
+}
+
+export function buildNovelCreationPayload(input: NovelCreationInput): NovelCreationInput {
+  const claimedKinds = new Map<string, GraphEntityKind>();
+
+  const characterSeeds = input.characterSeeds.map((item) => {
+    const normalized = normalizeParsedCharacterSeed(item);
+
+    if (normalized.name) {
+      claimedKinds.set(normalized.name, "CHARACTER");
+    }
+
+    return normalized;
+  });
+
+  const sanitizedCharacterSeeds = characterSeeds.map((item) => ({
+    ...item,
+    factionName: claimGraphEntityName(claimedKinds, item.factionName, "FACTION"),
+    locationName: claimGraphEntityName(claimedKinds, item.locationName, "LOCATION")
+  }));
+
+  const factionSeeds = normalizeGraphEntitySeeds(input.factionSeeds ?? []).filter((item) =>
+    Boolean(claimGraphEntityName(claimedKinds, item.name, "FACTION"))
+  );
+
+  const locationSeeds = normalizeGraphEntitySeeds(input.locationSeeds ?? []).filter((item) =>
+    Boolean(claimGraphEntityName(claimedKinds, item.name, "LOCATION"))
+  );
+
+  const relationSeeds = normalizeRelationSeeds(input.relationSeeds ?? []).filter((item) =>
+    isGraphRelationCompatible(item, claimedKinds)
+  );
+
+  return {
+    ...input,
+    characterSeeds: sanitizedCharacterSeeds,
+    factionSeeds,
+    locationSeeds,
+    relationSeeds
+  };
+}
+
+export function validateNovelCreationPayload(payload: unknown) {
+  const parsed = novelCreationSchema.safeParse(payload);
+
+  if (parsed.success) {
+    return null;
+  }
+
+  return parsed.error.issues[0]?.message ?? "建书信息校验失败";
 }
 
 export function formatRelationPreview(relation: RelationSeedInput) {
@@ -272,7 +425,34 @@ function normalizeParseHintFieldLabel(value: string) {
 
 function normalizeParseHintNote(value: string) {
   const trimmed = value.trim();
-  return parseHintNoteAliases[trimmed] ?? trimmed;
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const exactAlias = parseHintNoteAliases[trimmed];
+
+  if (exactAlias) {
+    return exactAlias;
+  }
+
+  const phraseAliases: Array<[string, string]> = [
+    ["inferred from setup complexity", "按设定复杂度推测"],
+    ["inferred from source", "来自原文推测"],
+    ["no explanation provided", "未提供说明。"]
+  ];
+
+  const fieldLabelEntries = Object.entries(parseHintFieldAliases).sort(
+    (left, right) => right[0].length - left[0].length
+  );
+
+  const withFieldLabels = fieldLabelEntries.reduce((current, [rawField, label]) => {
+    return current.replaceAll(rawField, label);
+  }, trimmed);
+
+  return phraseAliases.reduce((current, [english, chinese]) => {
+    return current.replaceAll(english, chinese);
+  }, withFieldLabels);
 }
 
 function buildParseHintLine(
@@ -562,6 +742,13 @@ export function NovelCreationForm({
     });
   }
 
+  function handleAddStyleSample() {
+    setForm((current) => ({
+      ...current,
+      styleSamples: addStyleSample(current.styleSamples)
+    }));
+  }
+
   function handleRemoveCharacterSeed(index: number) {
     setForm((current) => {
       return {
@@ -670,6 +857,20 @@ export function NovelCreationForm({
     event.preventDefault();
     setError(null);
 
+    const validationError = validateNovelCreationSubmission({
+      title: form.title,
+      category: form.category,
+      subGenre: form.subGenre,
+      targetAudience: form.targetAudience,
+      premise: form.premise,
+      styleSamples: form.styleSamples
+    });
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     const normalizedCharacterSeeds = normalizeCharacterSeeds(form.characterSeeds);
     const invalidCharacter = normalizedCharacterSeeds.find(
       (item) => !item.name && (item.role || item.summary || item.factionName || item.locationName)
@@ -680,9 +881,7 @@ export function NovelCreationForm({
       return;
     }
 
-    setIsSubmitting(true);
-
-    const payload = {
+    const payload = buildNovelCreationPayload({
       title: form.title,
       category: form.category,
       subGenre: form.subGenre,
@@ -706,7 +905,16 @@ export function NovelCreationForm({
       locationSeeds: appliedParsedGraphDraft.locationSeeds,
       characterSeeds: normalizedCharacterSeeds,
       relationSeeds: appliedParsedGraphDraft.relationSeeds
-    };
+    });
+
+    const payloadValidationError = validateNovelCreationPayload(payload);
+
+    if (payloadValidationError) {
+      setError(payloadValidationError);
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       const response = await fetch("/api/novels", {
@@ -737,6 +945,7 @@ export function NovelCreationForm({
   const lengthProfile = getNovelLengthProfile(form.lengthCategory);
   const lengthHints = getLengthFeatureHints(form.lengthCategory);
   const canParse = canParseSetupSource(setupSourceText, setupSourceFileName);
+  const setupSourceFieldState = getSetupSourceFieldState(isParsingSetup);
 
   return (
     <form className="creation-form" onSubmit={handleSubmit}>
@@ -818,6 +1027,7 @@ export function NovelCreationForm({
               <textarea
                 className="form-textarea"
                 value={setupSourceText}
+                disabled={setupSourceFieldState.isTextInputDisabled}
                 onChange={(event) => {
                   setSetupSourceText(event.target.value);
                   setParsedSetupDraft(null);
@@ -833,6 +1043,7 @@ export function NovelCreationForm({
                   type="file"
                   className="text-input"
                   accept=".txt,.md,.docx,.pdf"
+                  disabled={setupSourceFieldState.isFileInputDisabled}
                   onChange={handleSetupFileChange}
                 />
               </label>
@@ -1079,7 +1290,6 @@ export function NovelCreationForm({
 
           <label className="field">
             <span className="field-label">叙事视角</span>
-            <span className="field-helper">比如第一人称、第三人称。</span>
             <select
               className="text-input"
               value={form.narrativeView}
@@ -1341,6 +1551,14 @@ export function NovelCreationForm({
                   <h2>文风参考</h2>
                   <p>这里是给 AI 学你想要的感觉。现在不填，后面也能继续补。</p>
                 </div>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={handleAddStyleSample}
+                  disabled={form.styleSamples.length >= MAX_STYLE_SAMPLES}
+                >
+                  新增样本
+                </button>
               </div>
 
               <div className="creation-seed-grid">

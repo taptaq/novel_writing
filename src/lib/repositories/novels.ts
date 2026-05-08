@@ -116,6 +116,20 @@ type WorkspaceNovelRow = Omit<NovelSummaryRow, "chapters"> & {
   foreshadows: WorkspaceForeshadowRow[];
 };
 
+type MinimalWorkspaceChapterRow = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  order: number;
+  status: "DRAFT" | "REVIEW" | "READY" | "PUBLISHED";
+  wordCount: number;
+};
+
+type MinimalWorkspaceNovelRow = Omit<NovelSummaryRow, "chapters"> & {
+  chapters: MinimalWorkspaceChapterRow[];
+};
+
 type GraphRelationRow = {
   id: string;
   sourceId: string;
@@ -382,6 +396,30 @@ export type NovelSummariesResult = {
   source: "database" | "demo";
 };
 
+export type NovelWorkspaceRepositoryErrorCode = "WORKSPACE_READ_FAILED";
+
+export class NovelWorkspaceRepositoryError extends Error {
+  code: NovelWorkspaceRepositoryErrorCode;
+  novelSlug: string;
+
+  constructor(code: NovelWorkspaceRepositoryErrorCode, novelSlug: string, cause?: unknown) {
+    super(`${code}:${novelSlug}`);
+    this.name = "NovelWorkspaceRepositoryError";
+    this.code = code;
+    this.novelSlug = novelSlug;
+
+    if (cause !== undefined) {
+      this.cause = cause;
+    }
+  }
+}
+
+export function isNovelWorkspaceRepositoryError(
+  error: unknown
+): error is NovelWorkspaceRepositoryError {
+  return error instanceof NovelWorkspaceRepositoryError;
+}
+
 export type ChapterRepositoryErrorCode =
   | "DATABASE_NOT_CONFIGURED"
   | "NOVEL_NOT_FOUND"
@@ -636,61 +674,124 @@ export async function getNovelWorkspace(novelSlug: string): Promise<NovelWorkspa
       return null;
     }
 
-    return {
-      novel: {
-        id: novel.id,
-        slug: novel.slug,
-        title: novel.title,
-        premise: novel.premise ?? undefined,
-        summary: novel.summary ?? undefined,
-        genre: novel.genre ?? undefined,
-        tone: novel.tone ?? undefined,
-        lengthCategory: novel.lengthCategory ?? "MEDIUM",
-        status: novel.status,
-        updatedAt: novel.updatedAt.toISOString(),
-        chapterCount: novel.chapters.length,
-        wordCount: novel.chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0)
-      },
-      voiceRules: toStringArray(novel.voiceRules),
-      chapters: novel.chapters.map((chapter) => ({
-        id: chapter.id,
-        slug: chapter.slug,
-        title: chapter.title,
-        summary: chapter.summary ?? undefined,
-        sceneGoal: chapter.sceneGoal ?? undefined,
-        order: chapter.order,
-        status: chapter.status,
-        wordCount: chapter.wordCount,
-        excerpt: excerpt(chapter.plainText)
-      })),
-      entities: novel.entities.map((entity) => ({
-        id: entity.id,
-        type: entity.type,
-        name: entity.name,
-        summary: entity.summary ?? undefined,
-        tags: entity.tags
-      })),
-      outlines: novel.outlines.map((item) => ({
-        id: item.id,
-        title: item.title,
-        summary: item.summary ?? undefined,
-        depth: item.depth,
-        order: item.order,
-        status: item.status,
-        chapterSlug: item.chapter?.slug
-      })),
-      foreshadows: novel.foreshadows.map((item) => ({
-        id: item.id,
-        hook: item.hook,
-        plannedPayoff: item.plannedPayoff ?? undefined,
-        status: item.status,
-        firstMentionChapterSlug: item.firstMentionChapter?.slug,
-        payoffChapterSlug: item.payoffChapter?.slug
-      }))
-    };
+    return toNovelWorkspaceRecord(novel);
   } catch {
-    return null;
+    try {
+      const fallbackNovel = (await prisma.novel.findUnique({
+        where: {
+          slug: novelSlug
+        },
+        include: {
+          chapters: {
+            orderBy: {
+              order: "asc"
+            }
+          }
+        }
+      })) as MinimalWorkspaceNovelRow | null;
+
+      if (!fallbackNovel) {
+        return null;
+      }
+
+      return toFallbackNovelWorkspaceRecord(fallbackNovel);
+    } catch (fallbackError) {
+      throw new NovelWorkspaceRepositoryError(
+        "WORKSPACE_READ_FAILED",
+        novelSlug,
+        fallbackError
+      );
+    }
   }
+}
+
+function toNovelWorkspaceRecord(novel: WorkspaceNovelRow): NovelWorkspace {
+  return {
+    novel: {
+      id: novel.id,
+      slug: novel.slug,
+      title: novel.title,
+      premise: novel.premise ?? undefined,
+      summary: novel.summary ?? undefined,
+      genre: novel.genre ?? undefined,
+      tone: novel.tone ?? undefined,
+      lengthCategory: novel.lengthCategory ?? "MEDIUM",
+      status: novel.status,
+      updatedAt: novel.updatedAt.toISOString(),
+      chapterCount: novel.chapters.length,
+      wordCount: novel.chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0)
+    },
+    voiceRules: toStringArray(novel.voiceRules),
+    chapters: novel.chapters.map((chapter) => ({
+      id: chapter.id,
+      slug: chapter.slug,
+      title: chapter.title,
+      summary: chapter.summary ?? undefined,
+      sceneGoal: chapter.sceneGoal ?? undefined,
+      order: chapter.order,
+      status: chapter.status,
+      wordCount: chapter.wordCount,
+      excerpt: excerpt(chapter.plainText)
+    })),
+    entities: novel.entities.map((entity) => ({
+      id: entity.id,
+      type: entity.type,
+      name: entity.name,
+      summary: entity.summary ?? undefined,
+      tags: entity.tags
+    })),
+    outlines: novel.outlines.map((item) => ({
+      id: item.id,
+      title: item.title,
+      summary: item.summary ?? undefined,
+      depth: item.depth,
+      order: item.order,
+      status: item.status,
+      chapterSlug: item.chapter?.slug
+    })),
+    foreshadows: novel.foreshadows.map((item) => ({
+      id: item.id,
+      hook: item.hook,
+      plannedPayoff: item.plannedPayoff ?? undefined,
+      status: item.status,
+      firstMentionChapterSlug: item.firstMentionChapter?.slug,
+      payoffChapterSlug: item.payoffChapter?.slug
+    }))
+  };
+}
+
+function toFallbackNovelWorkspaceRecord(novel: MinimalWorkspaceNovelRow): NovelWorkspace {
+  return {
+    novel: {
+      id: novel.id,
+      slug: novel.slug,
+      title: novel.title,
+      premise: novel.premise ?? undefined,
+      summary: novel.summary ?? undefined,
+      genre: novel.genre ?? undefined,
+      tone: novel.tone ?? undefined,
+      lengthCategory: novel.lengthCategory ?? "MEDIUM",
+      status: novel.status,
+      updatedAt: novel.updatedAt.toISOString(),
+      chapterCount: novel.chapters.length,
+      wordCount: novel.chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0)
+    },
+    voiceRules: [],
+    chapters: novel.chapters.map((chapter) => ({
+      id: chapter.id,
+      slug: chapter.slug,
+      title: chapter.title,
+      summary: chapter.summary ?? undefined,
+      sceneGoal: undefined,
+      order: chapter.order,
+      status: chapter.status,
+      wordCount: chapter.wordCount,
+      excerpt: undefined
+    })),
+    entities: [],
+    outlines: [],
+    foreshadows: []
+  };
 }
 
 export async function getNovelGraphData(novelSlug: string): Promise<NovelGraphData | null> {
@@ -904,6 +1005,7 @@ export async function saveChapterDraft(
   novelSlug: string,
   chapterSlug: string,
   input: {
+    title: string;
     plainText: string;
     source: "manual" | "autosave";
     note?: string;
@@ -911,6 +1013,7 @@ export async function saveChapterDraft(
   }
 ): Promise<{
   chapter: {
+    title: string;
     slug: string;
     wordCount: number;
     updatedAt: string;
@@ -926,6 +1029,7 @@ export async function saveChapterDraft(
     throw new ChapterRepositoryError("DATABASE_NOT_CONFIGURED");
   }
 
+  const trimmedTitle = input.title.trim();
   const rawText = input.plainText;
   const wordCount = estimateWordCount(rawText.trim());
   const content = toParagraphBlocks(rawText);
@@ -976,6 +1080,7 @@ export async function saveChapterDraft(
         ...updateWhere
       },
       data: {
+        title: trimmedTitle,
         plainText: rawText,
         content,
         wordCount
@@ -995,11 +1100,12 @@ export async function saveChapterDraft(
         id: chapter.id
       },
       select: {
+        title: true,
         slug: true,
         wordCount: true,
         updatedAt: true
       }
-    })) as { slug: string; wordCount: number; updatedAt: Date } | null;
+    })) as { title: string; slug: string; wordCount: number; updatedAt: Date } | null;
 
     if (!updatedChapter) {
       throw new ChapterRepositoryError("CHAPTER_NOT_FOUND");
@@ -1030,6 +1136,7 @@ export async function saveChapterDraft(
 
     return {
       chapter: {
+        title: updatedChapter.title,
         slug: updatedChapter.slug,
         wordCount: updatedChapter.wordCount,
         updatedAt: updatedChapter.updatedAt.toISOString()

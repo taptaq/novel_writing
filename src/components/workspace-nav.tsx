@@ -17,7 +17,7 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
   const [isPending, startTransition] = useTransition();
   const writingHref = firstChapterSlug
     ? `${basePath}/${novelSlug}/chapters/${firstChapterSlug}`
-    : `${basePath}/${novelSlug}/outline`;
+    : `${basePath}/${novelSlug}/write`;
   const items = [
     {
       href: `${basePath}/${novelSlug}`,
@@ -27,7 +27,7 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
     {
       href: writingHref,
       label: "写作",
-      title: firstChapterSlug ? "直接开始写这一章" : "还没开写，先把第一章定下来"
+      title: firstChapterSlug ? "直接开始写这一章" : "开始第一章并进入编辑器"
     },
     {
       href: `${basePath}/${novelSlug}/world`,
@@ -62,8 +62,8 @@ export function WorkspaceNav({ novelSlug, firstChapterSlug, basePath = "/novels"
         const isActive =
           normalizedPathname === normalizedHref ||
           (isWriting &&
-            (normalizedPathname.startsWith(`${basePath}/${novelSlug}/chapters/`) ||
-              (!firstChapterSlug && normalizedPathname === `${basePath}/${novelSlug}/outline`))) ||
+          (normalizedPathname.startsWith(`${basePath}/${novelSlug}/chapters/`) ||
+              (!firstChapterSlug && normalizedPathname === `${basePath}/${novelSlug}/write`))) ||
           (item.label === "更多" &&
             (normalizedPathname === `${basePath}/${novelSlug}/style` ||
               normalizedPathname === `${basePath}/${novelSlug}/insights`));

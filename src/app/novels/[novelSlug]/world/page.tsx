@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { GraphWorkspace } from "@/components/graph-workspace";
 import { EntityGroup } from "@/components/entity-group";
 import { getNovelGraphData, getNovelWorkspace } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export default async function WorldPage({ params }: { params: { novelSlug: string } }) {
+  const novelSlug = decodeRouteParam(params.novelSlug);
   const [workspace, graph] = await Promise.all([
-    getNovelWorkspace(params.novelSlug),
-    getNovelGraphData(params.novelSlug)
+    getNovelWorkspace(novelSlug),
+    getNovelGraphData(novelSlug)
   ]);
 
   if (!workspace || !graph) {

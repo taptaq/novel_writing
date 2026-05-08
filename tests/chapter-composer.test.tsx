@@ -5,6 +5,7 @@ import {
   buildAssistRequestBody,
   buildChapterAuditInstruction,
   ChapterComposer,
+  formatLastSavedAtLabel,
   getStyleProfileUiState
 } from "@/components/chapter-composer";
 import type { ChapterEditorData } from "@/types/domain";
@@ -273,6 +274,7 @@ async function withMockWindow<T>(windowValue: Window | undefined, run: () => Pro
 type InteractiveRender = {
   container: FakeElement;
   editor: FakeElement;
+  titleInput: FakeElement;
   saveButton: FakeElement;
   getText: () => string;
   findButtonByText: (text: string) => FakeElement;
@@ -360,8 +362,8 @@ async function withInteractiveComposer<T>(
   document.defaultView = windowValue;
 
   return withMockWindow(windowValue, async () => {
-    const originalDocument = globalThis.document;
-    const originalNavigator = globalThis.navigator;
+    const originalDocumentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+    const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
     const originalHTMLElement = globalThis.HTMLElement;
     const originalHTMLInputElement = globalThis.HTMLInputElement;
     const originalHTMLTextAreaElement = globalThis.HTMLTextAreaElement;
@@ -375,9 +377,17 @@ async function withInteractiveComposer<T>(
     const originalFetch = globalThis.fetch;
     const originalAct = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      writable: true,
+      value: document
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      writable: true,
+      value: windowValue.navigator
+    });
     Object.assign(globalThis, {
-      document,
-      navigator: windowValue.navigator,
       HTMLElement: FakeElement,
       HTMLInputElement: FakeElement,
       HTMLTextAreaElement: FakeElement,
@@ -403,10 +413,14 @@ async function withInteractiveComposer<T>(
       });
 
       const editor = findElement(container, (node) => node.tagName === "TEXTAREA" && node.attributes.class === "editor-textarea");
+      const titleInput = findElement(
+        container,
+        (node) => node.tagName === "INPUT" && node.attributes.class === "text-input chapter-title-input"
+      );
       const saveButton = findElement(container, (node) => node.tagName === "BUTTON" && node.textContent === "立即保存");
 
-      if (!editor || !saveButton) {
-        throw new Error("interactive test harness could not find the editor or save button");
+      if (!editor || !titleInput || !saveButton) {
+        throw new Error("interactive test harness could not find the title input, editor, or save button");
       }
 
       const findButtonByText = (text: string) => {
@@ -432,15 +446,24 @@ async function withInteractiveComposer<T>(
       return await run({
         container,
         editor,
+        titleInput,
         saveButton,
         getText: () => normalizeWhitespace(container.textContent),
         findButtonByText,
         findLinkByText
       } satisfies InteractiveRender);
     } finally {
+      if (originalDocumentDescriptor) {
+        Object.defineProperty(globalThis, "document", originalDocumentDescriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "document");
+      }
+      if (originalNavigatorDescriptor) {
+        Object.defineProperty(globalThis, "navigator", originalNavigatorDescriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "navigator");
+      }
       Object.assign(globalThis, {
-        document: originalDocument,
-        navigator: originalNavigator,
         HTMLElement: originalHTMLElement,
         HTMLInputElement: originalHTMLInputElement,
         HTMLTextAreaElement: originalHTMLTextAreaElement,
@@ -682,6 +705,8 @@ describe("ChapterComposer", () => {
     expect(text).toContain("查看相关设定");
     expect(text).toContain("先写正文就行。卡住了，再用右边这些辅助功能。");
     expect(text).toContain("点一次右边按钮，这里就会出现候选稿。");
+    expect(markup).toContain('class="text-input chapter-title-input"');
+    expect(markup).toContain('value="第三声钟响前"');
   });
 
   it("shows a dedicated chapter audit desk with clear check targets", () => {
@@ -719,11 +744,21 @@ describe("ChapterComposer", () => {
     expect(text).toContain("已保存");
   });
 
+  it("formats recent save timestamps with today, yesterday, and short chinese dates", () => {
+    const now = new Date("2026-04-26T10:30:00");
+
+    expect(formatLastSavedAtLabel("2026-04-26T04:00:00", now)).toBe("今天 04:00");
+    expect(formatLastSavedAtLabel("2026-04-25T23:50:00", now)).toBe("昨天 23:50");
+    expect(formatLastSavedAtLabel("2026-04-20T08:05:00", now)).toBe("4月20日 08:05");
+    expect(formatLastSavedAtLabel("2025-12-31T22:40:00", now)).toBe("2025年12月31日 22:40");
+  });
+
   it("shows 未保存改动 after editing, then autosaves and returns to 已保存", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
           chapter: {
+            title: "钟楼风声",
             slug: "bell-before-dawn",
             wordCount: 23,
             updatedAt: "2026-04-29T10:00:00.000Z"
@@ -758,11 +793,67 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，钟索在掌心里勒出了一道红印。",
           source: "autosave",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
         })
       });
+    });
+  });
+
+  it("saves an edited title and updates the visible chapter labels", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          chapter: {
+            title: "钟楼回声",
+            slug: "bell-before-dawn",
+            wordCount: 1800,
+            updatedAt: "2026-04-29T10:03:00.000Z"
+          },
+          version: {
+            id: "version-3",
+            source: "manual",
+            createdAt: "2026-04-29T10:03:00.000Z",
+            wordCount: 1800
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      )
+    );
+
+    await withInteractiveComposer({ fetchImpl: fetchMock }, async (view) => {
+      await React.act(async () => {
+        view.titleInput.value = "  钟楼回声  ";
+        view.titleInput.dispatchEvent(new FakeEvent("input"));
+      });
+
+      expect(view.getText()).toContain("有未保存改动");
+
+      await React.act(async () => {
+        view.saveButton.dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/novels/mist-harbor/chapters/bell-before-dawn", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          title: "  钟楼回声  ",
+          plainText: "海风卷进钟楼。",
+          source: "manual",
+          expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
+        })
+      });
+      expect(view.getText()).toContain("钟楼回声");
+      expect(view.getText()).not.toContain("第三声钟响前");
     });
   });
 
@@ -778,6 +869,7 @@ describe("ChapterComposer", () => {
             new Response(
               JSON.stringify({
                 chapter: {
+                  title: "第三声钟响前",
                   slug: "bell-before-dawn",
                   wordCount: 24,
                   updatedAt: "2026-04-29T10:01:00.000Z"
@@ -813,6 +905,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，旧钟还没响。",
           source: "autosave",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
@@ -828,6 +921,7 @@ describe("ChapterComposer", () => {
         new Response(
           JSON.stringify({
             chapter: {
+              title: "第三声钟响前",
               slug: "bell-before-dawn",
               wordCount: 16,
               updatedAt: "2026-04-29T10:00:00.000Z"
@@ -858,6 +952,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，旧钟还没响，她先攥紧了绳结。",
           source: "autosave",
           expectedUpdatedAt: "2026-04-29T10:00:00.000Z"
@@ -868,6 +963,7 @@ describe("ChapterComposer", () => {
         new Response(
           JSON.stringify({
             chapter: {
+              title: "第三声钟响前",
               slug: "bell-before-dawn",
               wordCount: 24,
               updatedAt: "2026-04-29T10:01:00.000Z"
@@ -931,6 +1027,7 @@ describe("ChapterComposer", () => {
       new Response(
         JSON.stringify({
           chapter: {
+            title: "第三声钟响前",
             slug: "bell-before-dawn",
             wordCount: 27,
             updatedAt: "2026-04-29T10:02:00.000Z"
@@ -969,6 +1066,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，她先把灯绳绕在腕上。",
           source: "manual",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
@@ -1000,6 +1098,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，她先把灯绳压在掌心里。",
           source: "manual",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
@@ -1010,6 +1109,7 @@ describe("ChapterComposer", () => {
         new Response(
           JSON.stringify({
             chapter: {
+              title: "第三声钟响前",
               slug: "bell-before-dawn",
               wordCount: 18,
               updatedAt: "2026-04-29T10:06:00.000Z"
@@ -1058,6 +1158,7 @@ describe("ChapterComposer", () => {
       new Response(
         JSON.stringify({
           chapter: {
+            title: "第三声钟响前",
             slug: "bell-before-dawn",
             wordCount: 28,
             updatedAt: "2026-04-29T10:03:00.000Z"
@@ -1097,6 +1198,7 @@ describe("ChapterComposer", () => {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
+            title: "第三声钟响前",
             plainText: "海风卷进钟楼，她先把灯绳绕在腕上，又侧耳听了听。",
             source: "autosave",
             expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
@@ -1148,6 +1250,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，她先把门栓扣紧。",
           source: "autosave",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
@@ -1158,6 +1261,7 @@ describe("ChapterComposer", () => {
         new Response(
           JSON.stringify({
             chapter: {
+              title: "第三声钟响前",
               slug: "bell-before-dawn",
               wordCount: 19,
               updatedAt: "2026-04-29T10:03:30.000Z"
@@ -1271,6 +1375,7 @@ describe("ChapterComposer", () => {
         new Response(
           JSON.stringify({
             chapter: {
+              title: "第三声钟响前",
               slug: "bell-before-dawn",
               wordCount: 26,
               updatedAt: "2026-04-29T10:04:00.000Z"
@@ -1312,6 +1417,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，她把灯绳又在手背上绕了一圈。",
           source: "autosave",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"
@@ -1367,6 +1473,7 @@ describe("ChapterComposer", () => {
           new Response(
             JSON.stringify({
               chapter: {
+                title: "第三声钟响前",
                 slug: "bell-before-dawn",
                 wordCount: 21,
                 updatedAt: "2026-04-29T10:05:00.000Z"
@@ -1528,6 +1635,30 @@ describe("ChapterComposer", () => {
     expect(instruction).toContain("让主角意识到危险");
   });
 
+  it("blocks chapter audit when the draft body is blank", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const blankDraftData: ChapterEditorData = {
+      ...chapterData,
+      chapter: {
+        ...chapterData.chapter,
+        content: "   ",
+        wordCount: 0
+      }
+    };
+
+    await withInteractiveComposer({ data: blankDraftData, fetchImpl: fetchMock }, async (view) => {
+      const auditButton = view.findButtonByText("保存并审核本章");
+
+      expect("disabled" in auditButton.attributes).toBe(true);
+
+      await React.act(async () => {
+        auditButton.dispatchEvent(new FakeEvent("click"));
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("saves then runs a dedicated chapter audit and renders the audit report", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -1535,6 +1666,7 @@ describe("ChapterComposer", () => {
         new Response(
           JSON.stringify({
             chapter: {
+              title: "第三声钟响前",
               slug: "bell-before-dawn",
               wordCount: 32,
               updatedAt: "2026-04-29T10:07:00.000Z"
@@ -1599,6 +1731,7 @@ describe("ChapterComposer", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          title: "第三声钟响前",
           plainText: "海风卷进钟楼，她先把那封信压回桌面，又去看墙上的旧港图。",
           source: "manual",
           expectedUpdatedAt: "2026-04-26T04:00:00.000Z"

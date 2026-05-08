@@ -1,11 +1,11 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import NovelOverviewPage from "@/app/novels/[novelSlug]/page";
 import { NovelStyleManager } from "@/components/novel-style-manager";
 import { NovelCreationForm } from "@/components/novel-creation-form";
 import { WorkspaceNav } from "@/components/workspace-nav";
-import type { NovelStyleWorkspace } from "@/types/domain";
+import type { NovelStyleWorkspace, NovelWorkspace } from "@/types/domain";
 
 globalThis.React = React;
 
@@ -32,24 +32,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/repositories/novels", () => ({
-  getNovelWorkspace: vi.fn(async () => ({
-    novel: workspace.novel,
-    voiceRules: [],
-    chapters: [
-      {
-        id: "chapter-1",
-        slug: "cold-rain",
-        title: "冷雨开场",
-        summary: "主角在雨里等一句没说完的话。",
-        order: 1,
-        status: "DRAFT",
-        wordCount: 2200
-      }
-    ],
-    entities: [],
-    outlines: [],
-    foreshadows: []
-  }))
+  getNovelWorkspace: vi.fn(async () => mockWorkspace)
 }));
 
 const workspace: NovelStyleWorkspace = {
@@ -89,8 +72,121 @@ const workspace: NovelStyleWorkspace = {
   ]
 };
 
+let mockWorkspace: NovelWorkspace = {
+  novel: workspace.novel,
+  voiceRules: [],
+  chapters: [
+    {
+      id: "chapter-1",
+      slug: "cold-rain",
+      title: "冷雨开场",
+      summary: "主角在雨里等一句没说完的话。",
+      order: 1,
+      status: "DRAFT" as const,
+      wordCount: 2200
+    }
+  ],
+  entities: [],
+  outlines: [],
+  foreshadows: []
+};
+
 describe("Novel style page contracts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("decodes an encoded novel slug before loading the overview workspace", async () => {
+    const { getNovelWorkspace } = await import("@/lib/repositories/novels");
+
+    await NovelOverviewPage({
+      params: {
+        novelSlug: "%E8%82%A4%E7%AC%BC"
+      }
+    });
+
+    expect(vi.mocked(getNovelWorkspace)).toHaveBeenCalledWith("肤笼");
+  });
+
+  it("renders a startup workspace on overview when the novel has no chapters yet", async () => {
+    mockWorkspace = {
+      novel: {
+        ...workspace.novel,
+        chapterCount: 0,
+        wordCount: 0
+      },
+      voiceRules: [],
+      chapters: [],
+      entities: [
+        {
+          id: "entity-1",
+          type: "CHARACTER" as const,
+          name: "沈砚",
+          summary: "修钟学徒，做事细，嘴上不快。",
+          tags: ["谨慎", "观察力强"]
+        },
+        {
+          id: "entity-2",
+          type: "FACTION" as const,
+          name: "巡夜队",
+          summary: "负责夜间巡查与封锁消息。",
+          tags: ["守夜", "封锁"]
+        },
+        {
+          id: "entity-3",
+          type: "LOCATION" as const,
+          name: "愉悦小镇",
+          summary: "海边旧镇，秘密比钟声传得更慢。",
+          tags: ["海边", "旧镇"]
+        }
+      ],
+      outlines: [],
+      foreshadows: []
+    };
+
+    const markup = renderToStaticMarkup(
+      await NovelOverviewPage({
+        params: {
+          novelSlug: "glass-city"
+        }
+      })
+    );
+
+    expect(markup).toContain("起步工作区");
+    expect(markup).toContain("先把这本书跑起来");
+    expect(markup).toContain("第一章起步");
+    expect(markup).toContain("去写第一章");
+    expect(markup).toContain("人物列表");
+    expect(markup).toContain("势力列表");
+    expect(markup).toContain("地点列表");
+    expect(markup).toContain("沈砚");
+    expect(markup).toContain("巡夜队");
+    expect(markup).toContain("愉悦小镇");
+    expect(markup).toContain("还没开始写，先把开场场景和第一章目标定下来。");
+    expect(markup).toContain('href="/novels/glass-city/write"');
+    expect(markup).not.toContain("这里还没有内容");
+  });
+
   it("renders the style assets and sample sections with initial data", () => {
+    mockWorkspace = {
+      novel: workspace.novel,
+      voiceRules: [],
+      chapters: [
+        {
+          id: "chapter-1",
+          slug: "cold-rain",
+          title: "冷雨开场",
+          summary: "主角在雨里等一句没说完的话。",
+          order: 1,
+          status: "DRAFT",
+          wordCount: 2200
+        }
+      ],
+      entities: [],
+      outlines: [],
+      foreshadows: []
+    };
+
     const markup = renderToStaticMarkup(
       <NovelStyleManager novelSlug="glass-city" initialData={workspace} />
     );
@@ -126,6 +222,13 @@ describe("Novel style page contracts", () => {
     expect(markup).not.toContain(">图谱<");
     expect(markup).not.toContain(">文风<");
     expect(markup).not.toContain(">AI 策略<");
+  });
+
+  it("points the writing tab to the write launcher when no chapter exists yet", () => {
+    const markup = renderToStaticMarkup(<WorkspaceNav novelSlug="glass-city" />);
+
+    expect(markup).toContain('href="/novels/glass-city/write"');
+    expect(markup).toContain('title="开始第一章并进入编辑器"');
   });
 
   it("renders three primary next-action cards on the novel overview page", async () => {
@@ -303,5 +406,45 @@ describe("Novel style page contracts", () => {
     expect(markup).toContain("长篇");
     expect(markup).toContain("篇幅建议");
     expect(markup).toContain("功能侧重");
+  });
+
+  it("renders confidence notes without leaking english field keys", () => {
+    const markup = renderToStaticMarkup(
+      <NovelCreationForm
+        initialCreationMode="ai_parse"
+        initialParsedSetupDraft={{
+          title: "愉悦小镇异闻",
+          category: "悬疑",
+          subGenre: "小镇怪谈",
+          targetAudience: "成年读者",
+          premise: "一位调查员回到故乡，发现整座小镇都在替同一个秘密守口。",
+          narrativeView: "第三人称限知",
+          storyStructure: "三幕式",
+          lengthCategory: "LONG",
+          plannedChapterCount: 30,
+          targetWordsPerChapter: 3000,
+          worldSeed: "海边小镇与废弃游乐场。",
+          styleGoal: "克制、冷感、慢慢逼近真相。",
+          styleSamples: [],
+          factionSeeds: [],
+          locationSeeds: [],
+          characterSeeds: [],
+          relationSeeds: [],
+          guessedFields: ["plannedChapterCount", "targetWordsPerChapter", "targetAudience"],
+          missingFields: [],
+          confidenceNotes: [
+            'plannedChapterCount 按30章估算，基于每章3000字、总篇幅约9万字的长篇结构推测 / targetWordsPerChapter 明确来自原文"章节长度：每章3000字" / targetAudience 原文未明确提及，按内容深度与黑暗程度推断为成年读者'
+          ]
+        }}
+      />
+    );
+
+    expect(markup).toContain(
+      "说明：预计总章数 按30章估算，基于每章3000字、总篇幅约9万字的长篇结构推测 / 每章目标字数 明确来自原文"
+    );
+    expect(markup).toContain("目标受众 原文未明确提及，按内容深度与黑暗程度推断为成年读者");
+    expect(markup).not.toContain("plannedChapterCount");
+    expect(markup).not.toContain("targetWordsPerChapter");
+    expect(markup).not.toContain("targetAudience");
   });
 });

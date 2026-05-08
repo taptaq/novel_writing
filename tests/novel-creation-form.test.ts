@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   addCharacterSeed,
+  addStyleSample,
   applyParsedSetupDraft,
+  buildNovelCreationPayload,
   canParseSetupSource,
   createEmptyCharacterSeed,
   createInitialCharacterSeeds,
+  createInitialStyleSamples,
   createInitialParsedGraphDraft,
   createInitialParsedSetupDraft,
   extractParsedSetupGraphDraft,
   formatRelationPreview,
+  getSetupSourceFieldState,
   mergeParsedSetupGraphDraft,
-  removeCharacterSeed
+  removeCharacterSeed,
+  validateNovelCreationPayload,
+  validateNovelCreationSubmission
 } from "@/components/novel-creation-form";
 
 describe("character seed helpers", () => {
@@ -43,6 +49,32 @@ describe("character seed helpers", () => {
     expect(oneSeed).toHaveLength(1);
     expect(stillOneSeed).toHaveLength(1);
     expect(stillOneSeed).toEqual(oneSeed);
+  });
+});
+
+describe("style sample helpers", () => {
+  it("starts with one empty style sample by default", () => {
+    const samples = createInitialStyleSamples();
+
+    expect(samples).toHaveLength(1);
+    expect(samples[0]).toEqual({
+      title: "",
+      content: "",
+      note: ""
+    });
+  });
+
+  it("adds style samples without changing the existing ones", () => {
+    const initialSamples = createInitialStyleSamples();
+    const nextSamples = addStyleSample(initialSamples);
+
+    expect(nextSamples).toHaveLength(2);
+    expect(nextSamples[0]).toEqual(initialSamples[0]);
+    expect(nextSamples[1]).toEqual({
+      title: "",
+      content: "",
+      note: ""
+    });
   });
 });
 
@@ -86,6 +118,18 @@ describe("parsed setup helpers", () => {
     expect(canParseSetupSource("  ", "")).toBe(false);
     expect(canParseSetupSource("设定文本", "")).toBe(true);
     expect(canParseSetupSource("", "setup.md")).toBe(true);
+  });
+
+  it("locks both setup source inputs while ai parsing is running", () => {
+    expect(getSetupSourceFieldState(false)).toEqual({
+      isTextInputDisabled: false,
+      isFileInputDisabled: false
+    });
+
+    expect(getSetupSourceFieldState(true)).toEqual({
+      isTextInputDisabled: true,
+      isFileInputDisabled: true
+    });
   });
 
   it("creates an empty parsed setup draft container by default", () => {
@@ -296,5 +340,107 @@ describe("parsed setup helpers", () => {
       name: "周棠",
       role: "守塔人"
     });
+  });
+});
+
+describe("novel creation submission validation", () => {
+  it("rejects short style samples before submit", () => {
+    expect(
+      validateNovelCreationSubmission({
+        title: "玻璃城遗闻",
+        category: "奇幻",
+        subGenre: "都市奇想",
+        targetAudience: "女频成长向",
+        premise: "一位档案修复师在倒塌前的玻璃城里寻找失踪姐姐留下的第二份遗嘱。",
+        styleSamples: [
+          {
+            title: "短样文",
+            content: "她没有立刻回头，只把灯绳绕了一圈。",
+            note: ""
+          }
+        ]
+      })
+    ).toBe("参考样文至少需要 20 个字符。");
+  });
+
+  it("rejects schema-invalid payloads before the create request is sent", () => {
+    expect(
+      validateNovelCreationPayload({
+        title: "玻璃城遗闻",
+        category: "奇幻",
+        subGenre: "都市奇想",
+        targetAudience: "女频成长向",
+        premise: "一位档案修复师在倒塌前的玻璃城里寻找失踪姐姐留下的第二份遗嘱。",
+        narrativeView: "第三人称有限视角",
+        storyStructure: "三幕结构",
+        lengthCategory: "LONG",
+        plannedChapterCount: 24,
+        targetWordsPerChapter: 3200,
+        worldSeed: "玻璃城的记忆会在夜间折射成第二现实。",
+        styleGoal: "克制、冷感、观察细。",
+        styleSamples: [],
+        factionSeeds: [],
+        locationSeeds: [],
+        characterSeeds: [
+          {
+            name: "祝衡",
+            role: "档案修复师",
+            summary: "不信预言，但靠修复他人的遗物谋生。",
+            factionName: "城档馆",
+            locationName: "下城档案塔"
+          },
+          {
+            name: "祝衡",
+            role: "失踪的姐姐",
+            summary: "重复姓名会触发 schema 校验。",
+            factionName: "夜测队",
+            locationName: "镜坡"
+          }
+        ],
+        relationSeeds: []
+      })
+    ).toBe("人物姓名不能重复");
+  });
+
+  it("drops hidden graph seeds that conflict with character-derived location names", () => {
+    const payload = buildNovelCreationPayload({
+      title: "玻璃城遗闻",
+      category: "奇幻",
+      subGenre: "都市奇想",
+      targetAudience: "女频成长向",
+      premise: "一位档案修复师在倒塌前的玻璃城里寻找失踪姐姐留下的第二份遗嘱。",
+      narrativeView: "第三人称有限视角",
+      storyStructure: "三幕结构",
+      lengthCategory: "LONG",
+      plannedChapterCount: 24,
+      targetWordsPerChapter: 3200,
+      worldSeed: "玻璃城的记忆会在夜间折射成第二现实。",
+      styleGoal: "克制、冷感、观察细。",
+      styleSamples: [],
+      factionSeeds: [{ name: "愉悦小镇", summary: "AI 误识别成势力。" }],
+      locationSeeds: [{ name: "愉悦小镇", summary: "主场景地点。" }],
+      characterSeeds: [
+        {
+          name: "祝衡",
+          role: "档案修复师",
+          summary: "住在愉悦小镇。",
+          factionName: "",
+          locationName: "愉悦小镇"
+        }
+      ],
+      relationSeeds: [
+        {
+          sourceName: "祝衡",
+          targetName: "愉悦小镇",
+          type: "ROOTED_IN",
+          description: "长期生活在这里。"
+        }
+      ]
+    });
+
+    expect(payload.factionSeeds).toEqual([]);
+    expect(payload.locationSeeds).toEqual([{ name: "愉悦小镇", summary: "主场景地点。" }]);
+    expect(payload.characterSeeds[0]?.locationName).toBe("愉悦小镇");
+    expect(validateNovelCreationPayload(payload)).toBeNull();
   });
 });

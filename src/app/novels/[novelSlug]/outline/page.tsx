@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { getNovelWorkspace } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export default async function OutlinePage({ params }: { params: { novelSlug: string } }) {
-  const workspace = await getNovelWorkspace(params.novelSlug);
+  const novelSlug = decodeRouteParam(params.novelSlug);
+  const workspace = await getNovelWorkspace(novelSlug);
 
   if (!workspace) {
     notFound();

@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { isNovelStyleRepositoryError } from "@/lib/novel-style";
 import { rebuildNovelStyleProfile } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export async function POST(_: Request, { params }: { params: { novelSlug: string } }) {
   try {
-    const profile = await rebuildNovelStyleProfile(params.novelSlug);
+    const profile = await rebuildNovelStyleProfile(decodeRouteParam(params.novelSlug));
 
     return NextResponse.json({ profile });
   } catch (error) {

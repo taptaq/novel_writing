@@ -334,4 +334,67 @@ describe("normalizeParsedSetupDraft", () => {
       guessedFields: ["plannedChapterCount"]
     });
   });
+
+  it("drops cross-type duplicate graph entities during parse normalization", () => {
+    expect(
+      normalizeParsedSetupDraft({
+        factionSeeds: [
+          { name: "愉悦小镇", summary: "AI 误识别成势力。" },
+          { name: "巡夜队", summary: "本地守卫组织。" }
+        ],
+        locationSeeds: [{ name: "愉悦小镇", summary: "故事主场景。" }],
+        characterSeeds: [
+          {
+            name: "沈砚",
+            locationName: "愉悦小镇"
+          },
+          {
+            name: "周棠",
+            factionName: "巡夜队"
+          }
+        ],
+        relationSeeds: [
+          {
+            sourceName: "沈砚",
+            targetName: "愉悦小镇",
+            type: "ROOTED_IN",
+            description: "长期生活在这里。"
+          },
+          {
+            sourceName: "周棠",
+            targetName: "巡夜队",
+            type: "MEMBER_OF",
+            description: "隶属巡夜队。"
+          },
+          {
+            sourceName: "沈砚",
+            targetName: "愉悦小镇",
+            type: "MEMBER_OF",
+            description: "错误地把地点当势力。"
+          }
+        ]
+      })
+    ).toMatchObject({
+      factionSeeds: [{ name: "巡夜队", summary: "本地守卫组织。" }],
+      locationSeeds: [{ name: "愉悦小镇", summary: "故事主场景。" }],
+      characterSeeds: [
+        { name: "沈砚", locationName: "愉悦小镇" },
+        { name: "周棠", factionName: "巡夜队" }
+      ],
+      relationSeeds: [
+        {
+          sourceName: "沈砚",
+          targetName: "愉悦小镇",
+          type: "ROOTED_IN",
+          description: "长期生活在这里。"
+        },
+        {
+          sourceName: "周棠",
+          targetName: "巡夜队",
+          type: "MEMBER_OF",
+          description: "隶属巡夜队。"
+        }
+      ]
+    });
+  });
 });

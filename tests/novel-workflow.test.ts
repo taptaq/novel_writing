@@ -42,8 +42,8 @@ describe("getRecommendedNextStep", () => {
     ).toMatchObject({
       title: "开始第一章",
       description: "人物和结构都已经打底，现在最值得先推进的是把第一章写出来。",
-      href: "/outline",
-      actionLabel: "去确认第一章"
+      href: "/write",
+      actionLabel: "去写第一章"
     });
   });
 

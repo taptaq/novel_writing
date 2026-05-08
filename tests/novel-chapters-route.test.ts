@@ -123,6 +123,7 @@ describe("novel chapter save route", () => {
   it("updates chapter plainText and creates a manual version", async () => {
     mocks.saveChapterDraft.mockResolvedValue({
       chapter: {
+        title: "雨夜回声",
         slug: "cold-rain",
         wordCount: 1350,
         updatedAt: "2026-04-29T10:00:00.000Z"
@@ -137,6 +138,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/cold-rain", {
+        title: "雨夜回声",
         plainText: "她没有立刻回头，只是把灯绳又绕了一圈。",
         source: "manual",
         expectedUpdatedAt: "2026-04-29T09:58:00.000Z"
@@ -148,12 +150,14 @@ describe("novel chapter save route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.saveChapterDraft).toHaveBeenCalledWith("glass-city", "cold-rain", {
+      title: "雨夜回声",
       plainText: "她没有立刻回头，只是把灯绳又绕了一圈。",
       source: "manual",
       expectedUpdatedAt: "2026-04-29T09:58:00.000Z"
     });
     await expect(response.json()).resolves.toEqual({
       chapter: {
+        title: "雨夜回声",
         slug: "cold-rain",
         wordCount: 1350,
         updatedAt: "2026-04-29T10:00:00.000Z"
@@ -170,6 +174,7 @@ describe("novel chapter save route", () => {
   it("accepts autosave requests and returns a null version", async () => {
     mocks.saveChapterDraft.mockResolvedValue({
       chapter: {
+        title: "第三声钟响前",
         slug: "cold-rain",
         wordCount: 1362,
         updatedAt: "2026-04-29T10:02:00.000Z"
@@ -179,6 +184,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/cold-rain", {
+        title: "第三声钟响前",
         plainText: "她没有立刻回头，只是把灯绳又绕了一圈。",
         source: "autosave",
         expectedUpdatedAt: "2026-04-29T10:00:00.000Z"
@@ -190,12 +196,14 @@ describe("novel chapter save route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.saveChapterDraft).toHaveBeenCalledWith("glass-city", "cold-rain", {
+      title: "第三声钟响前",
       plainText: "她没有立刻回头，只是把灯绳又绕了一圈。",
       source: "autosave",
       expectedUpdatedAt: "2026-04-29T10:00:00.000Z"
     });
     await expect(response.json()).resolves.toEqual({
       chapter: {
+        title: "第三声钟响前",
         slug: "cold-rain",
         wordCount: 1362,
         updatedAt: "2026-04-29T10:02:00.000Z"
@@ -207,6 +215,7 @@ describe("novel chapter save route", () => {
   it("returns 400 for invalid chapter draft payload", async () => {
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/cold-rain", {
+        title: "",
         source: "manual"
       }),
       {
@@ -246,6 +255,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/missing/chapters/cold-rain", {
+        title: "缺席章节",
         plainText: "她没有立刻回头。",
         source: "manual"
       }),
@@ -265,6 +275,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/missing", {
+        title: "丢失章节",
         plainText: "她没有立刻回头。",
         source: "manual"
       }),
@@ -284,6 +295,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/cold-rain", {
+        title: "第三声钟响前",
         plainText: "她没有立刻回头。",
         source: "manual",
         expectedUpdatedAt: "2026-04-29T10:00:00.000Z"
@@ -304,6 +316,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/cold-rain", {
+        title: "第三声钟响前",
         plainText: "她没有立刻回头。",
         source: "autosave"
       }),
@@ -344,6 +357,7 @@ describe("novel chapter save route", () => {
 
     const response = await PATCH(
       buildRequest("http://localhost/api/novels/glass-city/chapters/cold-rain", {
+        title: "第三声钟响前",
         plainText: "她没有立刻回头。",
         source: "manual"
       }),

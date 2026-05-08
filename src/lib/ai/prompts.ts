@@ -85,22 +85,41 @@ export function buildChapterMemoryBlock(input: WritingAssistInput) {
 
 export function buildSetupParsingPrompt(sourceText: string) {
   return [
-    "You are an assistant that must parse novel setup/spec text into a structured creation draft.",
-    "Output must be JSON only.",
-    'Return exactly one top-level JSON object with this shape: {"title": string, "category": string, "subGenre": string, "targetAudience": string, "premise": string, "narrativeView": string, "storyStructure": string, "lengthCategory": "SHORT" | "MEDIUM" | "LONG", "plannedChapterCount"?: positive integer, "targetWordsPerChapter"?: positive integer, "worldSeed": string, "styleGoal": string, "styleSamples": StyleSample[], "factionSeeds": GraphEntitySeed[], "locationSeeds": GraphEntitySeed[], "characterSeeds": CharacterSeed[], "relationSeeds": RelationSeed[], "guessedFields": string[], "missingFields": string[], "confidenceNotes": string[]}.',
-    'Use empty strings or empty arrays when a field is not provided. Do not wrap the object in markdown, prose, or code fences.',
-    "If you infer or guess any field, list that field name in guessedFields.",
-    "If information is missing from the source, list that field name in missingFields.",
-    "Do not limit valid character seeds, faction seeds, location seeds, or relation seeds.",
-    "Return at most 3 valid style samples.",
+    "你要把小说设定说明解析成结构化建书草稿。",
+    "只返回一个 JSON 对象。",
+    '返回格式必须严格符合这个顶层结构：{"title": string, "category": string, "subGenre": string, "targetAudience": string, "premise": string, "narrativeView": string, "storyStructure": string, "lengthCategory": "SHORT" | "MEDIUM" | "LONG", "plannedChapterCount"?: positive integer, "targetWordsPerChapter"?: positive integer, "worldSeed": string, "styleGoal": string, "styleSamples": StyleSample[], "factionSeeds": GraphEntitySeed[], "locationSeeds": GraphEntitySeed[], "characterSeeds": CharacterSeed[], "relationSeeds": RelationSeed[], "guessedFields": string[], "missingFields": string[], "confidenceNotes": string[]}.',
+    "如果某个字段没有信息，使用空字符串或空数组。",
+    "不要输出 markdown、解释文字或代码块。",
+    "除 guessedFields 和 missingFields 里的字段名外，所有给用户看的字段值都必须使用简体中文。",
+    "不要输出英文句子；只有源文本中的专有名词、缩写或必须保留的原文名称才允许保留英文。",
+    "如果你推测了某个字段，把字段名写进 guessedFields。",
+    "如果源文本里缺少某个字段，把字段名写进 missingFields。",
+    "不要限制 characterSeeds、factionSeeds、locationSeeds、relationSeeds 的有效数量。",
+    "最多返回 3 段有效 styleSamples。",
+    "同一个名称只能归属于一种图谱实体类型，不能同时出现在 characterSeeds、factionSeeds、locationSeeds 中。",
+    "如果同名实体既像地点又像势力，优先依据角色引用和关系类型判断：locationName 或 ROOTED_IN 优先判为地点，factionName 或 MEMBER_OF 优先判为势力。",
+    "如果仍然无法确定，只保留一个最合理的实体类型，不要把同名实体重复写进不同数组。",
     'StyleSample = {"title"?: string, "content": string, "note"?: string}.',
     'GraphEntitySeed = {"name": string, "summary"?: string}.',
     'CharacterSeed = {"name": string, "role"?: string, "summary"?: string, "factionName"?: string, "locationName"?: string}.',
     'RelationSeed = {"sourceName": string, "targetName": string, "type": "ALLY" | "ENEMY" | "FAMILY" | "MENTOR" | "SUBORDINATE" | "OTHER" | "MEMBER_OF" | "ROOTED_IN", "description"?: string, "remark"?: string, "note"?: string}.',
-    "lengthCategory must be one of SHORT, MEDIUM, LONG.",
+    "lengthCategory 必须是 SHORT、MEDIUM、LONG 之一。",
     "",
     "Source text:",
     sourceText
+  ].join("\n");
+}
+
+export function buildSetupChineseRewritePrompt(draft: unknown) {
+  return [
+    "把下面这个建书草稿 JSON 改写成简体中文。",
+    "不要改变 JSON 结构，不要删字段，不要新增字段，不要补充原文里没有的新事实。",
+    "guessedFields 和 missingFields 里的字段名保持英文不变。",
+    "除专有名词、缩写或必须保留的原文名称外，不要保留英文句子。",
+    "只返回合法 JSON，不要输出解释文字或代码块。",
+    "",
+    "Draft JSON:",
+    JSON.stringify(draft)
   ].join("\n");
 }
 

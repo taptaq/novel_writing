@@ -3,10 +3,11 @@ import {
   createChapter,
   isChapterRepositoryError
 } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export async function POST(_: Request, { params }: { params: { novelSlug: string } }) {
   try {
-    const result = await createChapter(params.novelSlug);
+    const result = await createChapter(decodeRouteParam(params.novelSlug));
 
     return NextResponse.json(result);
   } catch (error) {

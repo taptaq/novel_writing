@@ -4,6 +4,7 @@ import {
   isChapterRepositoryError,
   saveChapterDraft
 } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 const chapterRouteParamsSchema = z.object({
   novelSlug: z.string().trim().min(1),
@@ -11,6 +12,7 @@ const chapterRouteParamsSchema = z.object({
 });
 
 const chapterDraftSchema = z.object({
+  title: z.string().trim().min(1, "章节标题不能为空"),
   plainText: z.string(),
   source: z.enum(["manual", "autosave"]),
   note: z.string().trim().optional(),
@@ -22,7 +24,10 @@ export async function PATCH(
   { params }: { params: { novelSlug: string; chapterSlug: string } }
 ) {
   try {
-    const routeParams = chapterRouteParamsSchema.parse(params);
+    const routeParams = chapterRouteParamsSchema.parse({
+      novelSlug: decodeRouteParam(params.novelSlug),
+      chapterSlug: decodeRouteParam(params.chapterSlug)
+    });
     let payload: unknown;
 
     try {

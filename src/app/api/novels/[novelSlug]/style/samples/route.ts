@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { isNovelStyleRepositoryError } from "@/lib/novel-style";
 import { addNovelStyleSample } from "@/lib/repositories/novels";
+import { decodeRouteParam } from "@/lib/route-params";
 
 export async function POST(request: Request, { params }: { params: { novelSlug: string } }) {
   try {
+    const novelSlug = decodeRouteParam(params.novelSlug);
     let payload: unknown;
 
     try {
@@ -18,7 +20,7 @@ export async function POST(request: Request, { params }: { params: { novelSlug: 
       );
     }
 
-    const sample = await addNovelStyleSample(params.novelSlug, payload);
+    const sample = await addNovelStyleSample(novelSlug, payload);
 
     return NextResponse.json({ sample }, { status: 201 });
   } catch (error) {
